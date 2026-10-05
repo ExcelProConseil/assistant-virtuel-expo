@@ -5,94 +5,223 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>JPV Commandes</title>
 <style>
-:root{--bg:#f5f6f8;--card:#fff;--txt:#1d2433;--mut:#6b7385;--ok:#1f9d55;--ko:#d9534f;--warn:#e0a100;--line:#e3e6ec;--acc:#2f5bea}
-@media (prefers-color-scheme:dark){:root{--bg:#14171f;--card:#1e2330;--txt:#e8ebf2;--mut:#98a1b6;--line:#2d3446}}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--txt);font:15px system-ui,sans-serif}
-header{padding:16px;display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between}
-h1{font-size:20px;margin:0}main{padding:0 16px 32px;max-width:1100px;margin:auto}
-.kpis{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px}
-.kpi{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 14px;min-width:130px}
-.kpi b{font-size:22px;display:block}.kpi span{color:var(--mut);font-size:13px}
-.bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
-button,select,input{font:inherit;padding:7px 12px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--txt)}
+:root{--bg:#f4f5f8;--card:#fff;--txt:#1d2433;--mut:#6b7385;--line:#e3e6ec;--acc:#2f5bea;
+--ok:#1f9d55;--ko:#d9534f;--warn:#e0a100;--okbg:#e6f6ec;--kobg:#fcebea;--warnbg:#fff6dc;--we:#eceef3;--cp:#cfe9ff;--abs:#ffd9a8;--fer:#e4d8f5}
+@media (prefers-color-scheme:dark){:root{--bg:#14171f;--card:#1e2330;--txt:#e8ebf2;--mut:#98a1b6;--line:#2d3446;
+--okbg:#173525;--kobg:#3a1d1d;--warnbg:#3a3114;--we:#252b3a;--cp:#17354f;--abs:#4d3516;--fer:#35294d}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--txt);font:14px system-ui,sans-serif}
+header{padding:12px 16px;display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;background:var(--card);border-bottom:1px solid var(--line)}
+h1{font-size:18px;margin:0}
+nav{display:flex;gap:4px}
+nav button{border:0;background:none;padding:8px 14px;border-radius:8px;font:inherit;font-weight:600;color:var(--mut);cursor:pointer}
+nav button.on{background:var(--acc);color:#fff}
+main{padding:14px 16px 40px;max-width:1500px;margin:auto}
+button,select,input{font:inherit;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--txt)}
 button{cursor:pointer}button.on{background:var(--acc);color:#fff;border-color:var(--acc)}
+.bar{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;align-items:center}
+.kpis{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 14px;min-width:120px}
+.kpi b{font-size:20px;display:block}.kpi span{color:var(--mut);font-size:12px}
+.note{background:var(--warnbg);border:1px dashed var(--warn);padding:10px 14px;border-radius:10px;margin-bottom:12px}
+.sub{color:var(--mut);font-size:12px}
+/* priorités */
 .cmd{background:var(--card);border:1px solid var(--line);border-left:6px solid var(--mut);border-radius:10px;margin-bottom:8px}
 .cmd.complete{border-left-color:var(--ok)}.cmd.incomplete{border-left-color:var(--ko)}
-.head{display:grid;grid-template-columns:auto 1fr auto auto;gap:12px;padding:10px 14px;align-items:center;cursor:pointer}
-.rang{font-weight:700;color:var(--mut);min-width:28px}.client{font-weight:600}.sub{color:var(--mut);font-size:13px}
-.badge{padding:3px 10px;border-radius:99px;font-size:13px;font-weight:600;color:#fff;background:var(--mut)}
+.head{display:grid;grid-template-columns:34px 1fr 150px 90px 170px;gap:10px;padding:9px 14px;align-items:center;cursor:pointer}
+.rang{font-weight:700;color:var(--mut)}.client{font-weight:600}
+.badge{padding:3px 10px;border-radius:99px;font-size:12px;font-weight:600;color:#fff;background:var(--mut);text-align:center}
 .complete .badge{background:var(--ok)}.incomplete .badge{background:var(--ko)}
 .retard{color:var(--ko);font-weight:600}.proche{color:var(--warn);font-weight:600}
 .det{display:none;border-top:1px solid var(--line);padding:6px 14px 12px;overflow-x:auto}.cmd.open .det{display:block}
-table{border-collapse:collapse;width:100%;font-size:14px}th,td{text-align:left;padding:5px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
-th{color:var(--mut);font-weight:500}.s-ok{color:var(--ok)}.s-manque{color:var(--ko)}.s-inconnu{color:var(--warn)}
-.note{background:var(--card);border:1px dashed var(--warn);padding:10px 14px;border-radius:10px;margin-bottom:12px}
-@media(max-width:600px){.head{grid-template-columns:auto 1fr}}
+/* tableau mensuel */
+.wrap{background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:auto;max-height:72vh}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{text-align:left;padding:5px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+th{position:sticky;top:0;background:var(--card);color:var(--mut);font-weight:600;z-index:1;border-bottom:2px solid var(--line)}
+td.n,th.n{text-align:right}
+tr.g1 td{border-top:2px solid var(--line)}
+tr.opt td.c{color:var(--mut)}
+tr.fait td{color:var(--mut)}
+tr.fait td.d{text-decoration:line-through}
+.pt{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:middle;background:var(--mut)}
+.pt.ok{background:var(--ok)}.pt.manque{background:var(--ko)}.pt.inconnu{background:var(--warn)}.pt.livree{background:#9aa}
+tfoot td{font-weight:700;position:sticky;bottom:0;background:var(--card);border-top:2px solid var(--line)}
+.exc{display:inline-block;width:8px;height:20px;border-radius:3px;vertical-align:middle}
+/* gantt */
+.gwrap{background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:auto}
+.gt{position:relative;min-width:max-content}
+.gr{display:flex;border-bottom:1px solid var(--line)}
+.gn{position:sticky;left:0;z-index:3;width:160px;min-width:160px;background:var(--card);border-right:2px solid var(--line);padding:6px 10px;font-weight:600;display:flex;flex-direction:column;justify-content:center}
+.gdays{display:flex;position:relative}
+.gd{width:var(--w);min-width:var(--w);text-align:center;font-size:11px;border-right:1px solid var(--line);color:var(--mut)}
+.gd.we{background:var(--we)}.gd.ferie{background:var(--fer)}.gd.cp{background:var(--cp)}.gd.absence{background:var(--abs)}
+.gd.auj{box-shadow:inset 2px 0 0 var(--ko),inset -2px 0 0 var(--ko)}
+.ghead .gd{padding:2px 0;line-height:1.2}.ghead .gm{font-weight:700;color:var(--txt);text-align:left;padding:3px 6px;border-right:1px solid var(--line);white-space:nowrap;overflow:hidden}
+.task{position:absolute;height:22px;border-radius:5px;font-size:11px;line-height:22px;padding:0 6px;color:#fff;overflow:hidden;white-space:nowrap;cursor:pointer;background:var(--ok);border:1px solid rgba(0,0,0,.15)}
+.task.incomplete{background:repeating-linear-gradient(45deg,#c9a24a,#c9a24a 6px,#dcb95f 6px,#dcb95f 12px);color:#2a2000}
+.task.retard{outline:2px solid var(--ko);outline-offset:-1px}
+.task.manuel::before{content:"📌 "}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--mut);margin:10px 0}
+.legend i{display:inline-block;width:14px;height:14px;border-radius:3px;vertical-align:middle;margin-right:4px;border:1px solid var(--line)}
+.panel{position:fixed;right:16px;bottom:16px;width:320px;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.25);padding:14px;z-index:20;display:none}
+.panel h3{margin:0 0 6px;font-size:15px}.panel p{margin:4px 0}.panel .x{position:absolute;right:10px;top:8px;border:0;background:none;font-size:18px}
+.chk{display:flex;gap:12px;flex-wrap:wrap;font-size:13px}
+.chk label{display:flex;gap:5px;align-items:center;cursor:pointer}
+@media(max-width:700px){.head{grid-template-columns:30px 1fr 90px}.head>:nth-child(4),.head>:nth-child(5){display:none}}
 </style>
 </head>
 <body>
 <header>
   <h1>JPV Commandes 2026-2027</h1>
-  <div class="bar" style="margin:0">
-    <input id="q" placeholder="Rechercher client, VK, réf…" style="min-width:220px">
-    
-  </div>
+  <nav id="nav"></nav>
+  <input id="q" placeholder="Rechercher client, VK, réf…" style="min-width:210px">
 </header>
 <main>
   <div id="note"></div>
-  <div class="kpis" id="kpis"></div>
-  <div class="bar" id="filtres"></div>
-  <div id="liste"></div>
+  <div id="vue"></div>
 </main>
+<div class="panel" id="panel"></div>
 <script>
-let DATA = [], filtre = 'complete', stockOk = false;
-const fmt = d => d ? d.split('-').reverse().join('/') : '—';
+let CMD = [], MOIS = [], stockOk = false, onglet = 'prio', filtre = 'complete', mois = null, G = null;
+let gDebut = lundi(new Date()), gJours = 56;
+const $ = id => document.getElementById(id);
+const fmt = d => d ? d.split('-').reverse().join('/') : '';
 const eur = n => (n || 0).toLocaleString('fr-FR', {maximumFractionDigits: 0}) + ' €';
+const hh = n => n ? (Math.round(n * 100) / 100).toLocaleString('fr-FR') : '';
+const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const dd = s => { const [y, m, j] = s.split('-').map(Number); return new Date(y, m - 1, j); };
+function lundi(d) { const x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); x.setDate(x.getDate() - (x.getDay() + 6) % 7); return x; }
+const NOMS = s => s.toLowerCase().replace(/(^|\s)\S/g, c => c.toUpperCase());
+const STAT = {ok: 'STOCK OK', manque: 'STOCK PARTIEL', inconnu: 'pas dans JPV Stock', livree: 'expédiée'};
 
 async function charger() {
   const r = await (await fetch('/api/commandes')).json();
-  DATA = r.commandes; stockOk = r.stock_charge; afficher();
+  CMD = r.commandes; MOIS = r.mois; stockOk = r.stock_charge;
+  if (!mois) mois = (CMD.find(c => !c.livree) || {mois: MOIS[0]}).mois;
+  if (onglet === 'gantt') await chargerGantt();
+  afficher();
+}
+async function chargerGantt() {
+  G = await (await fetch(`/api/gantt?debut=${iso(gDebut)}&jours=${gJours}`)).json();
 }
 
 function afficher() {
-  const ouvertes = DATA.filter(c => c.statut !== 'livree');
-  const compl = ouvertes.filter(c => c.statut === 'complete');
-  document.getElementById('note').innerHTML = stockOk ? '' :
+  $('nav').innerHTML = [['prio', 'Prioritaires'], ['plan', 'Planning'], ['gantt', 'Gantt salariés']].map(([k, l]) =>
+    `<button class="${onglet === k ? 'on' : ''}" onclick="choisir('${k}')">${l}</button>`).join('');
+  $('note').innerHTML = stockOk ? '' :
     '<div class="note">⚠️ JPV Stock est introuvable : aucune commande ne peut être déclarée complète. Vérifie que le dossier C:\\Users\\cmore\\JPV_STOCK existe.</div>';
-  document.getElementById('kpis').innerHTML =
-    `<div class="kpi"><b>${ouvertes.length}</b><span>commandes à livrer</span></div>
-     <div class="kpi"><b style="color:var(--ok)">${compl.length}</b><span>complètes (prêtes)</span></div>
-     <div class="kpi"><b style="color:var(--ko)">${ouvertes.length - compl.length}</b><span>incomplètes</span></div>
-     <div class="kpi"><b>${eur(compl.reduce((s, c) => s + c.ca, 0))}</b><span>CA prêt à produire</span></div>`;
-  const onglets = [['complete', 'Prioritaires (complètes)'], ['incomplete', 'Incomplètes'], ['toutes', 'Toutes'], ['livree', 'Livrées']];
-  document.getElementById('filtres').innerHTML = onglets.map(([k, l]) =>
-    `<button class="${filtre === k ? 'on' : ''}" onclick="filtre='${k}';afficher()">${l}</button>`).join('');
-  const q = document.getElementById('q').value.toLowerCase();
-  let liste = DATA.filter(c => filtre === 'toutes' ? c.statut !== 'livree' : c.statut === filtre);
-  if (q) liste = liste.filter(c => JSON.stringify([c.client, c.cde, c.lignes.map(l => [l.vk, l.nomenc, l.designation])]).toLowerCase().includes(q));
-  document.getElementById('liste').innerHTML = liste.map((c, i) => {
+  ({prio: vuePrio, plan: vuePlan, gantt: vueGantt})[onglet]();
+}
+async function choisir(k) { onglet = k; if (k === 'gantt') await chargerGantt(); afficher(); }
+
+const recherche = c => { const q = $('q').value.toLowerCase(); return !q || JSON.stringify([c.client, c.cde, c.lignes.map(l => [l.vk, l.nomenc, l.designation])]).toLowerCase().includes(q); };
+
+/* ---------------------------------------------------------------- Prioritaires */
+function vuePrio() {
+  const ouv = CMD.filter(c => !c.livree), compl = ouv.filter(c => c.statut === 'complete');
+  const heures = compl.reduce((s, c) => s + c.heures, 0);
+  let h = `<div class="kpis">
+    <div class="kpi"><b>${ouv.length}</b><span>commandes à livrer</span></div>
+    <div class="kpi"><b style="color:var(--ok)">${compl.length}</b><span>complètes (prêtes à produire)</span></div>
+    <div class="kpi"><b style="color:var(--ko)">${ouv.length - compl.length}</b><span>incomplètes</span></div>
+    <div class="kpi"><b>${hh(heures)} h</b><span>de travail prêt</span></div>
+    <div class="kpi"><b>${eur(compl.reduce((s, c) => s + c.ca, 0))}</b><span>CA prêt à produire</span></div></div>
+    <div class="bar">${[['complete', 'Prioritaires (complètes)'], ['incomplete', 'Incomplètes'], ['toutes', 'Toutes'], ['livree', 'Livrées']].map(([k, l]) =>
+      `<button class="${filtre === k ? 'on' : ''}" onclick="filtre='${k}';afficher()">${l}</button>`).join('')}</div>`;
+  const liste = CMD.filter(c => (filtre === 'toutes' ? !c.livree : c.statut === filtre) && recherche(c));
+  h += liste.map((c, i) => {
     const j = c.jours, cls = j == null ? '' : j < 0 ? 'retard' : j <= 7 ? 'proche' : '';
-    const delai = j == null ? 'sans délai' : j < 0 ? `en retard de ${-j} j` : j === 0 ? 'aujourd\'hui' : `dans ${j} j`;
+    const delai = j == null ? 'sans délai' : j < 0 ? `en retard de ${-j} j` : j === 0 ? "aujourd'hui" : `dans ${j} j`;
     const badge = c.statut === 'complete' ? 'COMPLÈTE' : c.statut === 'livree' ? 'LIVRÉE' : `${c.nb_manque} ligne(s) à compléter`;
-    return `<div class="cmd ${c.statut}" id="${c.groupe}">
-      <div class="head" onclick="this.parentNode.classList.toggle('open')">
-        <div class="rang">${i + 1}</div>
-        <div><div class="client">${c.client || '—'} <span class="sub">${c.cde || ''}</span></div>
-             <div class="sub">${c.lignes.length} ligne(s) · ${c.mois} · ${eur(c.ca)}</div></div>
-        <div class="${cls}">${fmt(c.delai)}<div class="sub ${cls}">${delai}</div></div>
-        <span class="badge">${badge}</span></div>
-      <div class="det"><table><tr><th>VK</th><th>Nomenclature</th><th>Désignation</th><th>Qté</th><th>JPV Stock</th><th>État</th></tr>
-      ${c.lignes.map(l => `<tr><td>${l.vk}</td><td>${l.nomenc}</td><td>${l.designation || ''}</td><td>${l.qte}</td>
-        <td>${{ok:'STOCK OK',manque:'STOCK PARTIEL',inconnu:'—',livree:'EXPÉDIÉE'}[l.statut]}</td><td class="s-${l.statut}">${{ok: '✔ en stock', manque: '✖ insuffisant', inconnu: '? pas encore dans JPV Stock', livree: 'livrée'}[l.statut]}</td></tr>`).join('')}
+    return `<div class="cmd ${c.statut}"><div class="head" onclick="this.parentNode.classList.toggle('open')">
+      <div class="rang">${i + 1}</div>
+      <div><div class="client">${c.client || '—'} <span class="sub">${c.cde || ''}</span></div><div class="sub">${c.lignes.length} ligne(s) · ${c.mois} · ${eur(c.ca)}</div></div>
+      <div class="${cls}">${fmt(c.delai) || '—'}<div class="sub ${cls}">${delai}</div></div>
+      <div>${c.heures ? hh(c.heures) + ' h' : '<span class="sub">— h</span>'}</div>
+      <span class="badge">${badge}</span></div>
+      <div class="det"><table><tr><th>VK</th><th>Nomenclature</th><th>Désignation</th><th class="n">Qté</th><th>JPV Stock</th></tr>
+      ${c.lignes.map(l => `<tr><td>${l.vk}</td><td>${l.nomenc}</td><td>${l.designation || ''}</td><td class="n">${l.qte}</td><td><span class="pt ${l.statut}"></span>${STAT[l.statut]}</td></tr>`).join('')}
       </table><p><button onclick="livrer('${c.groupe}',${c.statut !== 'livree'})">${c.statut === 'livree' ? 'Remettre en cours' : 'Marquer comme livrée'}</button></p></div></div>`;
   }).join('') || '<p class="sub">Aucune commande dans cette vue.</p>';
+  $('vue').innerHTML = h;
 }
 
-async function livrer(groupe, livree) {
-  await fetch('/api/livree', {method: 'POST', body: JSON.stringify({groupe, livree})}); charger();
+/* ---------------------------------------------------------------- Planning (comme l'Excel) */
+function vuePlan() {
+  const du = CMD.filter(c => c.mois === mois && recherche(c));
+  const lignes = du.flatMap(c => c.lignes.map((l, i) => ({l, c, i})));
+  const totH = lignes.reduce((s, x) => s + (x.l.h_tot || 0), 0), totCA = lignes.reduce((s, x) => s + (x.l.ca_total || 0), 0);
+  const ouv = du.filter(c => !c.livree);
+  let h = `<div class="bar">${MOIS.map(m => `<button class="${m === mois ? 'on' : ''}" onclick="mois='${m}';afficher()">${m}</button>`).join('')}</div>
+   <div class="kpis"><div class="kpi"><b>${du.length}</b><span>commandes</span></div><div class="kpi"><b>${ouv.length}</b><span>à livrer</span></div>
+   <div class="kpi"><b>${hh(totH)} h</b><span>heures du mois</span></div><div class="kpi"><b>${eur(totCA)}</b><span>CA du mois</span></div></div>
+   <div class="wrap"><table><thead><tr><th></th><th>Type</th><th>Récep. cde</th><th>AR</th><th>Client</th><th>VK</th><th>CDE</th><th>Nomenc.</th><th class="n">Qté</th>
+   <th>Délai</th><th>Rec. prod</th><th>Désignation</th><th>Étape prod.</th><th class="n">H. unit.</th><th class="n">H. tot.</th><th class="n">C.A.</th><th class="n">C.A. total</th><th>JPV Stock</th></tr></thead><tbody>`;
+  h += lignes.map(({l, c, i}) => {
+    const retard = !c.livree && l.delai && l.delai < iso(new Date());
+    return `<tr class="${i === 0 ? 'g1' : 'opt'} ${l.statut === 'livree' ? 'fait' : ''}">
+      <td><span class="exc" style="background:${l.couleur ? '#' + l.couleur : 'transparent'}" title="Couleur dans l'Excel"></span></td>
+      <td>${i === 0 ? l.type || '' : ''}</td><td>${fmt(l.date_recep)}</td><td>${fmt(l.date_ar)}</td>
+      <td class="c">${i === 0 ? '<b>' + (l.client || '') + '</b>' : ''}</td><td>${l.vk}</td><td>${i === 0 ? l.cde || '' : ''}</td><td>${l.nomenc}</td>
+      <td class="n">${l.qte}</td><td class="${retard ? 'retard' : ''}">${fmt(l.delai)}</td><td>${fmt(l.rec_prod) || l.rec_prod || ''}</td>
+      <td class="d">${l.designation || ''}</td><td>${l.etape || ''}</td><td class="n">${hh(l.h_unit)}</td><td class="n">${hh(l.h_tot)}</td>
+      <td class="n">${l.ca_unit ? l.ca_unit.toLocaleString('fr-FR') : ''}</td><td class="n">${l.ca_total ? l.ca_total.toLocaleString('fr-FR', {maximumFractionDigits: 0}) : ''}</td>
+      <td><span class="pt ${l.statut}"></span>${l.statut === 'livree' ? '✓' : STAT[l.statut]}</td></tr>`;
+  }).join('');
+  h += `</tbody><tfoot><tr><td colspan="14">Total ${mois}</td><td class="n">${hh(totH)}</td><td></td><td class="n">${eur(totCA)}</td><td></td></tr></tfoot></table></div>`;
+  $('vue').innerHTML = h;
 }
-document.getElementById('q').oninput = afficher;
-charger(); setInterval(charger, 60000);
+
+/* ---------------------------------------------------------------- Gantt */
+function vueGantt() {
+  if (!G) { $('vue').innerHTML = '<p class="sub">Chargement…</p>'; return; }
+  const W = gJours <= 28 ? 40 : gJours <= 56 ? 26 : 16, n = G.jours.length, deb = iso(gDebut), fin = G.jours[n - 1].date;
+  const emps = G.salaries.filter(s => s.actif).map(s => s.nom);
+  let h = `<div class="bar"><button onclick="decaler(-14)">◀</button><button onclick="gDebut=lundi(new Date());rechargerGantt()">Aujourd'hui</button><button onclick="decaler(14)">▶</button>
+    <select onchange="gJours=+this.value;rechargerGantt()">${[[28, '4 semaines'], [56, '8 semaines'], [91, '13 semaines'], [182, '6 mois']].map(([v, l]) => `<option value="${v}" ${gJours == v ? 'selected' : ''}>${l}</option>`).join('')}</select>
+    <span class="sub">Les commandes <b>complètes</b> sont planifiées en premier, par délai, puis les incomplètes (hachurées). 8,5 h/jour du lundi au jeudi, 5 h le vendredi.</span></div>
+    <div class="chk" style="margin-bottom:10px"><b>Salariés inclus :</b>${G.salaries.map(s => `<label><input type="checkbox" ${s.actif ? 'checked' : ''} onchange="inclure('${s.nom.replace(/'/g, "\\'")}',this.checked)">${NOMS(s.nom)}</label>`).join('')}</div>`;
+  // en-tête : mois puis jours
+  let mh = '', cur = null, cnt = 0;
+  const flush = () => { if (cur) mh += `<div class="gm" style="width:${cnt * W}px">${cur}</div>`; };
+  G.jours.forEach(j => { const d = dd(j.date), m = d.toLocaleDateString('fr-FR', {month: 'long', year: 'numeric'}); if (m !== cur) { flush(); cur = m; cnt = 0; } cnt++; }); flush();
+  const jh = G.jours.map(j => { const d = dd(j.date); return `<div class="gd ${j.we ? 'we' : ''} ${j.ferie ? 'ferie' : ''} ${j.auj ? 'auj' : ''}" title="${fmt(j.date)}">${'dlmmjvs'[d.getDay()].toUpperCase()}<br>${d.getDate()}</div>`; }).join('');
+  h += `<div class="gwrap" style="--w:${W}px"><div class="gt">
+    <div class="gr ghead"><div class="gn"></div><div><div class="gdays" style="display:flex">${mh}</div><div class="gdays">${jh}</div></div></div>`;
+  emps.forEach(nom => {
+    const ts = G.taches.filter(t => t.employe === nom && t.fin >= deb && t.debut <= fin).sort((a, b) => a.debut.localeCompare(b.debut));
+    const lanes = []; const place = ts.map(t => { let k = lanes.findIndex(f => f < t.debut); if (k < 0) { k = lanes.length; lanes.push(''); } lanes[k] = t.fin; return k; });
+    const hLigne = Math.max(1, lanes.length) * 26 + 8;
+    const cells = G.jours.map(j => `<div class="gd ${G.etat[nom][j.date] || ''} ${j.auj ? 'auj' : ''}" style="height:${hLigne}px" title="${G.etat[nom][j.date] === 'cp' ? 'Congé payé' : G.etat[nom][j.date] === 'absence' ? 'Absence' : ''}"></div>`).join('');
+    const bars = ts.map((t, i) => {
+      const a = Math.max(0, Math.round((dd(t.debut < deb ? deb : t.debut) - dd(deb)) / 864e5)), b = Math.min(n - 1, Math.round((dd(t.fin) - dd(deb)) / 864e5));
+      const tip = `${t.client} ${t.cde || ''} · ${hh(t.heures)} h · ${fmt(t.debut)} → ${fmt(t.fin)}${t.delai ? ' · délai ' + fmt(t.delai) : ''}${t.retard ? ' · EN RETARD' : ''}`;
+      return `<div class="task ${t.statut} ${t.retard ? 'retard' : ''} ${t.manuel ? 'manuel' : ''}" style="left:${a * W + 1}px;width:${(b - a + 1) * W - 2}px;top:${place[i] * 26 + 4}px" title="${tip}" onclick="detail('${t.groupe}')">${t.client} · ${hh(t.heures)} h</div>`;
+    }).join('');
+    h += `<div class="gr"><div class="gn" style="height:${hLigne}px">${NOMS(nom)}<span class="sub">${hh(G.charge[nom])} h planifiées</span></div><div class="gdays" style="position:relative">${cells}${bars}</div></div>`;
+  });
+  h += `</div></div><div class="legend"><span><i style="background:var(--ok)"></i>complète (prête)</span><span><i style="background:repeating-linear-gradient(45deg,#c9a24a,#c9a24a 4px,#dcb95f 4px,#dcb95f 8px)"></i>incomplète (matériel manquant)</span>
+   <span><i style="border:2px solid var(--ko)"></i>fini après le délai</span><span><i style="background:var(--cp)"></i>congé payé</span><span><i style="background:var(--abs)"></i>absence</span><span><i style="background:var(--fer)"></i>férié</span><span>📌 salarié choisi à la main</span></div>`;
+  if (G.sans_heures.length) h += `<div class="note"><b>${G.sans_heures.length} commande(s) sans heures dans l'Excel</b> (non planifiées) : ${G.sans_heures.map(s => s.client + (s.delai ? ' ' + fmt(s.delai) : '')).join(' · ')}</div>`;
+  $('vue').innerHTML = h;
+}
+async function rechargerGantt() { await chargerGantt(); afficher(); }
+function decaler(j) { gDebut.setDate(gDebut.getDate() + j); rechargerGantt(); }
+async function inclure(nom, actif) { await post('/api/employe', {nom, actif}); rechargerGantt(); }
+function detail(groupe) {
+  const t = G.taches.find(x => x.groupe === groupe), c = CMD.find(x => x.groupe === groupe); if (!t) return;
+  $('panel').style.display = 'block';
+  $('panel').innerHTML = `<button class="x" onclick="$('panel').style.display='none'">×</button><h3>${t.client} <span class="sub">${t.cde || ''}</span></h3>
+    <p>${hh(t.heures)} h · ${t.statut === 'complete' ? '✅ complète' : '⚠️ ' + c.nb_manque + ' ligne(s) à compléter'}</p>
+    <p>Planifiée du <b>${fmt(t.debut)}</b> au <b>${fmt(t.fin)}</b></p><p>Délai client : <b class="${t.retard ? 'retard' : ''}">${fmt(t.delai) || '—'}</b>${t.retard ? ' (dépassé)' : ''}</p>
+    <p>Salarié : <select onchange="affecter('${t.groupe}',this.value)"><option value="">Automatique</option>${G.salaries.filter(s => s.actif).map(s => `<option value="${s.nom}" ${t.manuel && s.nom === t.employe ? 'selected' : ''}>${NOMS(s.nom)}</option>`).join('')}</select></p>`;
+}
+async function affecter(groupe, nom) { await post('/api/affectation', {groupe, nom}); $('panel').style.display = 'none'; rechargerGantt(); }
+
+const post = (u, d) => fetch(u, {method: 'POST', body: JSON.stringify(d)});
+async function livrer(groupe, livree) { await post('/api/livree', {groupe, livree}); charger(); }
+$('q').oninput = afficher;
+charger(); setInterval(() => { if (onglet !== 'gantt') charger(); }, 60000);
 </script>
 </body>
 </html>
