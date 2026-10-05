@@ -14,6 +14,7 @@ def connecter():
       nomenc TEXT, designation TEXT, qte REAL, date_recep TEXT, date_ar TEXT, delai TEXT,
       rec_prod TEXT, depart TEXT, heures REAL, ca REAL, principale INTEGER, livree INTEGER DEFAULT 0, source TEXT);
     CREATE TABLE IF NOT EXISTS statut_stock (vk TEXT PRIMARY KEY, statut TEXT, maj TEXT);
+    CREATE TABLE IF NOT EXISTS meta (cle TEXT PRIMARY KEY, valeur TEXT);
     CREATE TABLE IF NOT EXISTS stock (reference TEXT PRIMARY KEY, quantite REAL, maj TEXT);
     """)
     return con
@@ -34,4 +35,12 @@ def remplacer_stock(con, items):
     for it in items:
         con.execute("INSERT OR REPLACE INTO stock VALUES (?,?,datetime('now'))",
                     (str(it["reference"]).strip(), float(it["quantite"])))
+    con.commit()
+
+def remplacer_lignes_excel(con, lignes):
+    """Synchronise avec l'Excel : met à jour, ajoute, et retire les lignes qui n'y sont plus
+    (l'état « livrée » saisi dans le logiciel est conservé)."""
+    vks = [l["vk"] for l in lignes]
+    upsert_lignes(con, lignes, source="excel")
+    con.execute("DELETE FROM lignes WHERE source='excel' AND vk NOT IN (%s)" % ",".join("?" * len(vks)), vks)
     con.commit()

@@ -9,6 +9,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from base import connecter, upsert_lignes, remplacer_stock
 from calcul import commandes
 from sync_stock import synchroniser
+from importer_excel import reimporter_si_modifie
 
 WEB = pathlib.Path(__file__).resolve().parent.parent / "web"
 
@@ -21,6 +22,8 @@ class H(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path.startswith("/api/commandes"):
             con = connecter()
+            try: reimporter_si_modifie(con)
+            except Exception as e: print("Relecture du planning impossible :", e)
             try: synchroniser(con)
             except Exception as e: print("Sync JPV Stock impossible :", e)
             n = con.execute("SELECT COUNT(*) FROM statut_stock").fetchone()[0]

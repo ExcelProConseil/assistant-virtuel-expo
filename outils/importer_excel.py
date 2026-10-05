@@ -1,7 +1,8 @@
 """Importe le planning Excel (un onglet par mois) dans la base SQLite des commandes."""
 import sys, re, datetime as dt
 import openpyxl
-from base import connecter, upsert_lignes
+import os, shutil, tempfile, pathlib
+from base import connecter, remplacer_lignes_excel
 
 COLS = dict(type="A", recep="B", ar="C", client="D", vk="E", cde="F", nomenc="G", qte="H",
             delai="I", rec_prod="J", designation="K", etape="L", depart="O",
@@ -47,6 +48,23 @@ def lire(chemin):
                 principale=1 if val(ws, "D", r) else 0, livree=1 if deja_passe(ws.title) else 0))
     return lignes
 
+PLANNING = os.environ.get("JPV_PLANNING", r"C:/Users/cmore/OneDrive/Bureau/commandes clt/Systeme/Claude outputs/2026 PLANNING COMMANDE.xlsx")
+
+def reimporter_si_modifie(con):
+    """Relit le planning dès que JPV-AGENT (ou toi) l'a enregistré. Retourne True si relu."""
+    if not os.path.exists(PLANNING):
+        return False
+    m = str(os.path.getmtime(PLANNING))
+    r = con.execute("SELECT valeur FROM meta WHERE cle='planning_mtime'").fetchone()
+    if r and r[0] == m:
+        return False
+    tmp = pathlib.Path(tempfile.mkdtemp()) / "planning.xlsx"
+    shutil.copy(PLANNING, tmp)                 # on lit une copie : marche même si Excel est ouvert
+    remplacer_lignes_excel(con, lire(tmp))
+    con.execute("INSERT OR REPLACE INTO meta VALUES ('planning_mtime', ?)", (m,))
+    con.commit()
+    return True
+
 MOIS = {"JANV":1,"FEV":2,"MAR":3,"AVRIL":4,"MAI":5,"JUIN":6,"JUIL":7,"AOUT":8,"SEPT":9,"OCT":10,"NOV":11,"DEC":12}
 
 def deja_passe(onglet):
@@ -60,5 +78,5 @@ if __name__ == "__main__":
     chemin = sys.argv[1]
     lignes = lire(chemin)
     con = connecter()
-    upsert_lignes(con, lignes, source="excel")
+    remplacer_lignes_excel(con, lignes)
     print(f"{len(lignes)} lignes importées")
