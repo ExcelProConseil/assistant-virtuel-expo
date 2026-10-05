@@ -1,41 +1,36 @@
-"""Priorité des commandes : une commande est COMPLÈTE si toutes ses lignes sont couvertes par le stock.
-Le stock est réparti commande par commande, dans l'ordre d'urgence (délai le plus proche d'abord)."""
+"""Priorité des commandes. Le statut de chaque ligne vient de JPV Stock (même numéro VK) :
+STOCK OK -> ok, STOCK PARTIEL -> manque, EXPEDIEE -> livrée, absent de JPV Stock -> inconnu.
+Une commande est COMPLÈTE quand toutes ses lignes sont « ok »."""
 import datetime as dt
+
+LIBELLE = {"STOCK OK": "ok", "STOCK PARTIEL": "manque", "EXPEDIEE": "livree"}
 
 def _date(s):
     try: return dt.date.fromisoformat(s)
     except (TypeError, ValueError): return None
 
 def commandes(con):
-    stock = {r["reference"].upper(): r["quantite"] for r in con.execute("SELECT reference, quantite FROM stock")}
+    stock = {r["vk"]: r["statut"] for r in con.execute("SELECT vk, statut FROM statut_stock")}
     groupes = {}
     for r in con.execute("SELECT * FROM lignes ORDER BY rowid"):
         groupes.setdefault(r["groupe"], []).append(dict(r))
     cmds = []
     for g, lignes in groupes.items():
-        p = lignes[0]
-        delais = [d for d in (_date(l["delai"]) for l in lignes) if d]
-        cmds.append(dict(groupe=g, mois=p["mois"], client=p["client"], cde=p["cde"], type=p["type"],
-                         delai=min(delais).isoformat() if delais else None,
-                         livree=all(l["livree"] for l in lignes),
-                         ca=sum(l["ca"] or 0 for l in lignes), lignes=lignes))
-    # ordre d'urgence : délai le plus proche, les sans-délai à la fin
-    cmds.sort(key=lambda c: (c["livree"], c["delai"] or "9999", c["groupe"]))
-    reste = dict(stock)
-    for c in cmds:
-        manque = connu = 0
-        for l in c["lignes"]:
-            ref = (l["nomenc"] or "").upper()
-            if c["livree"]:
-                l["statut"] = "livree"; continue
-            if ref not in reste:
-                l["statut"] = "inconnu"; manque += 1; continue
-            if reste[ref] >= (l["qte"] or 0):
-                l["statut"] = "ok"; l["en_stock"] = reste[ref]; reste[ref] -= l["qte"] or 0
+        for l in lignes:
+            st = stock.get(l["vk"])
+            if st == "EXPEDIEE" or l["livree"]:
+                l["statut"] = "livree"
             else:
-                l["statut"] = "manque"; l["en_stock"] = reste[ref]; manque += 1
-        c["statut"] = "livree" if c["livree"] else ("complete" if not manque else "incomplete")
-        c["nb_manque"] = manque
-        d = _date(c["delai"])
-        c["jours"] = (d - dt.date.today()).days if d else None
+                l["statut"] = LIBELLE.get(st, "inconnu")
+        delais = [d for d in (_date(l["delai"]) for l in lignes) if d]
+        p = lignes[0]
+        livree = all(l["statut"] == "livree" for l in lignes)
+        manque = sum(l["statut"] in ("manque", "inconnu") for l in lignes)
+        d = min(delais) if delais else None
+        cmds.append(dict(groupe=g, mois=p["mois"], client=p["client"], cde=p["cde"], type=p["type"],
+                         delai=d.isoformat() if d else None, ca=sum(l["ca"] or 0 for l in lignes),
+                         livree=livree, nb_manque=manque, lignes=lignes,
+                         statut="livree" if livree else ("complete" if not manque else "incomplete"),
+                         jours=(d - dt.date.today()).days if d else None))
+    cmds.sort(key=lambda c: (c["livree"], c["delai"] or "9999", c["groupe"]))
     return cmds

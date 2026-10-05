@@ -13,6 +13,7 @@ def connecter():
       vk TEXT PRIMARY KEY, mois TEXT, groupe TEXT, client TEXT, cde TEXT, type TEXT,
       nomenc TEXT, designation TEXT, qte REAL, date_recep TEXT, date_ar TEXT, delai TEXT,
       rec_prod TEXT, depart TEXT, heures REAL, ca REAL, principale INTEGER, livree INTEGER DEFAULT 0, source TEXT);
+    CREATE TABLE IF NOT EXISTS statut_stock (vk TEXT PRIMARY KEY, statut TEXT, maj TEXT);
     CREATE TABLE IF NOT EXISTS stock (reference TEXT PRIMARY KEY, quantite REAL, maj TEXT);
     """)
     return con

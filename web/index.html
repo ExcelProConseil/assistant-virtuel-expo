@@ -35,8 +35,7 @@ th{color:var(--mut);font-weight:500}.s-ok{color:var(--ok)}.s-manque{color:var(--
   <h1>JPV Commandes 2026-2027</h1>
   <div class="bar" style="margin:0">
     <input id="q" placeholder="Rechercher client, VK, réf…" style="min-width:220px">
-    <button onclick="majStock()">Importer le stock (CSV)</button>
-    <input type="file" id="f" accept=".csv,.json,.txt" hidden>
+    
   </div>
 </header>
 <main>
@@ -59,7 +58,7 @@ function afficher() {
   const ouvertes = DATA.filter(c => c.statut !== 'livree');
   const compl = ouvertes.filter(c => c.statut === 'complete');
   document.getElementById('note').innerHTML = stockOk ? '' :
-    '<div class="note">⚠️ Le stock JPV Stock n\'est pas encore chargé : aucune commande ne peut être déclarée complète. Utilise « Importer le stock » ou l\'envoi automatique.</div>';
+    '<div class="note">⚠️ JPV Stock est introuvable : aucune commande ne peut être déclarée complète. Vérifie que le dossier C:\\Users\\cmore\\JPV_STOCK existe.</div>';
   document.getElementById('kpis').innerHTML =
     `<div class="kpi"><b>${ouvertes.length}</b><span>commandes à livrer</span></div>
      <div class="kpi"><b style="color:var(--ok)">${compl.length}</b><span>complètes (prêtes)</span></div>
@@ -82,9 +81,9 @@ function afficher() {
              <div class="sub">${c.lignes.length} ligne(s) · ${c.mois} · ${eur(c.ca)}</div></div>
         <div class="${cls}">${fmt(c.delai)}<div class="sub ${cls}">${delai}</div></div>
         <span class="badge">${badge}</span></div>
-      <div class="det"><table><tr><th>VK</th><th>Nomenclature</th><th>Désignation</th><th>Qté</th><th>Stock dispo</th><th>État</th></tr>
+      <div class="det"><table><tr><th>VK</th><th>Nomenclature</th><th>Désignation</th><th>Qté</th><th>JPV Stock</th><th>État</th></tr>
       ${c.lignes.map(l => `<tr><td>${l.vk}</td><td>${l.nomenc}</td><td>${l.designation || ''}</td><td>${l.qte}</td>
-        <td>${l.en_stock ?? '—'}</td><td class="s-${l.statut}">${{ok: '✔ en stock', manque: '✖ insuffisant', inconnu: '? absent du stock', livree: 'livrée'}[l.statut]}</td></tr>`).join('')}
+        <td>${{ok:'STOCK OK',manque:'STOCK PARTIEL',inconnu:'—',livree:'EXPÉDIÉE'}[l.statut]}</td><td class="s-${l.statut}">${{ok: '✔ en stock', manque: '✖ insuffisant', inconnu: '? pas encore dans JPV Stock', livree: 'livrée'}[l.statut]}</td></tr>`).join('')}
       </table><p><button onclick="livrer('${c.groupe}',${c.statut !== 'livree'})">${c.statut === 'livree' ? 'Remettre en cours' : 'Marquer comme livrée'}</button></p></div></div>`;
   }).join('') || '<p class="sub">Aucune commande dans cette vue.</p>';
 }
@@ -92,12 +91,6 @@ function afficher() {
 async function livrer(groupe, livree) {
   await fetch('/api/livree', {method: 'POST', body: JSON.stringify({groupe, livree})}); charger();
 }
-function majStock() { document.getElementById('f').click(); }
-document.getElementById('f').onchange = async e => {
-  const t = await e.target.files[0].text();
-  const r = await (await fetch('/api/stock', {method: 'POST', body: t})).json();
-  alert(r.erreur ? 'Erreur : ' + r.erreur : r.ok + ' références de stock chargées'); charger();
-};
 document.getElementById('q').oninput = afficher;
 charger(); setInterval(charger, 60000);
 </script>

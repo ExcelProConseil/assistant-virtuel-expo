@@ -1,13 +1,14 @@
 """Serveur local JPV Commandes :  python serveur.py   puis ouvrir http://localhost:8000
   GET  /api/commandes              -> commandes + priorité
   POST /api/agent/commandes        -> JPV-AGENT envoie ses commandes (liste JSON de lignes)
-  POST /api/stock                  -> JPV Stock envoie le stock [{reference, quantite}]
+  (le statut du stock est lu automatiquement dans JPV Stock, en lecture seule)
   POST /api/livree                 -> {groupe, livree:true|false}
 """
 import json, pathlib, csv, io
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from base import connecter, upsert_lignes, remplacer_stock
 from calcul import commandes
+from sync_stock import synchroniser
 
 WEB = pathlib.Path(__file__).resolve().parent.parent / "web"
 
@@ -19,7 +20,10 @@ class H(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path.startswith("/api/commandes"):
-            con = connecter(); n = con.execute("SELECT COUNT(*) FROM stock").fetchone()[0]
+            con = connecter()
+            try: synchroniser(con)
+            except Exception as e: print("Sync JPV Stock impossible :", e)
+            n = con.execute("SELECT COUNT(*) FROM statut_stock").fetchone()[0]
             return self._send(200, {"stock_charge": n > 0, "commandes": commandes(con)})
         f = WEB / ("index.html" if self.path in ("/", "") else self.path.lstrip("/"))
         if f.is_file() and WEB in f.resolve().parents:
