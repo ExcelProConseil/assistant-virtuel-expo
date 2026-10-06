@@ -54,10 +54,10 @@ tfoot td{font-weight:700;position:sticky;bottom:0;background:var(--card);border-
 .gwrap{background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:auto}
 .gt{position:relative;min-width:max-content}
 .gr{display:flex;border-bottom:1px solid var(--line)}
-.gn{position:sticky;left:0;z-index:3;width:160px;min-width:160px;background:var(--card);border-right:2px solid var(--line);padding:6px 10px;font-weight:600;display:flex;flex-direction:column;justify-content:center}
+.gn{position:sticky;left:0;z-index:3;width:200px;min-width:200px;background:var(--card);border-right:2px solid var(--line);padding:6px 10px;font-weight:600;display:flex;flex-direction:column;justify-content:center}
 .gdays{display:flex;position:relative}
 .gd{width:var(--w);min-width:var(--w);text-align:center;font-size:11px;border-right:1px solid var(--line);color:var(--mut)}
-.gd.we{background:var(--we)}.gd.ferie{background:var(--fer)}.gd.cp{background:var(--cp)}.gd.absence{background:var(--abs)}
+.gd.cfa{background:#ffd6e7}.gd.we{background:var(--we)}.gd.ferie{background:var(--fer)}.gd.cp{background:var(--cp)}.gd.absence{background:var(--abs)}
 .gd.auj{box-shadow:inset 2px 0 0 var(--ko),inset -2px 0 0 var(--ko)}
 .ghead .gd{padding:2px 0;line-height:1.2}.ghead .gm{font-weight:700;color:var(--txt);text-align:left;padding:3px 6px;border-right:1px solid var(--line);white-space:nowrap;overflow:hidden}
 .task{position:absolute;height:22px;border-radius:5px;font-size:11px;line-height:22px;padding:0 6px;color:#fff;overflow:hidden;white-space:nowrap;cursor:pointer;background:var(--ok);border:1px solid rgba(0,0,0,.15)}
@@ -139,14 +139,14 @@ async function chargerGantt() {
 }
 
 function afficher() {
-  $('nav').innerHTML = [['prio', 'Prioritaires'], ['plan', 'Planning'], ['gantt', 'Gantt salariés'], ['rapp', '🔔 Rappels']].map(([k, l]) =>
+  $('nav').innerHTML = [['prio', 'Prioritaires'], ['plan', 'Planning'], ['gantt', 'Gantt salariés'], ['sal', '👥 Salariés'], ['rapp', '🔔 Rappels']].map(([k, l]) =>
     `<button class="${onglet === k ? 'on' : ''}" onclick="choisir('${k}')">${l}${k === 'rapp' && RAPP.length ? '<span class="badgeN">' + RAPP.filter(x => x.niveau === 'rouge').length + '</span>' : ''}</button>`).join('');
   $('lu').innerHTML = (planningLu ? 'Planning Excel relu le ' + fmt(planningLu.slice(0, 10)) + ' à ' + planningLu.slice(11, 16) + ' · ' : '') + '<button onclick="relire()">↻ Relire l\'Excel maintenant</button>';
   $('note').innerHTML = (erreurPlan ? `<div class="note">⚠️ ${erreurPlan}</div>` : '') + (CMD.length === 0 && !erreurPlan ? '<div class="note">Aucune commande : le planning Excel n\'a pas encore été lu.</div>' : '') + (stockOk ? '' :
     '<div class="note">⚠️ JPV Stock est introuvable : aucune commande ne peut être déclarée complète. Vérifie que le dossier C:\\Users\\cmore\\JPV_STOCK existe.</div>');
-  ({prio: vuePrio, plan: vuePlan, gantt: vueGantt, rapp: vueRapp})[onglet]();
+  ({prio: vuePrio, plan: vuePlan, gantt: vueGantt, rapp: vueRapp, sal: vueSal})[onglet]();
 }
-async function choisir(k) { onglet = k; if (k === 'gantt') await chargerGantt(); afficher(); }
+async function choisir(k) { onglet = k; if (k === 'gantt') await chargerGantt(); if (k === 'sal') await chargerSal(); afficher(); }
 
 const recherche = c => { const q = $('q').value.toLowerCase(); return !q || JSON.stringify([c.client, c.cde, c.lignes.map(l => [l.vk, l.nomenc, l.designation])]).toLowerCase().includes(q); };
 
@@ -216,7 +216,7 @@ function vueGantt() {
   const emps = G.salaries.filter(s => s.actif).map(s => s.nom);
   let h = `<div class="bar"><button onclick="imprimerGantt()">📄 PDF Gantt</button><button onclick="decaler(-14)">◀</button><button onclick="gDebut=lundi(new Date());rechargerGantt()">Aujourd'hui</button><button onclick="decaler(14)">▶</button>
     <select onchange="gJours=+this.value;rechargerGantt()">${[[28, '4 semaines'], [56, '8 semaines'], [91, '13 semaines'], [182, '6 mois']].map(([v, l]) => `<option value="${v}" ${gJours == v ? 'selected' : ''}>${l}</option>`).join('')}</select>
-    <span class="sub">Les commandes au statut <b>Complet, En fabrication ou Au contrôle</b> peuvent être affectées : <b>c'est toi qui choisis</b> (tableau en dessous). 8,5 h/jour du lundi au jeudi, 5 h le vendredi.</span></div>
+    <span class="sub">Les commandes au statut <b>Complet, En fabrication ou Au contrôle</b> peuvent être affectées : <b>c'est toi qui choisis</b> (tableau en dessous). Capacité selon les heures de chaque salarié : 39 h = 8,5 h du lundi au jeudi + 5 h le vendredi.</span></div>
     <div class="chk" style="margin-bottom:10px"><b>Salariés inclus :</b>${G.salaries.map(s => `<label><input type="checkbox" ${s.actif ? 'checked' : ''} onchange="inclure('${s.nom.replace(/'/g, "\\'")}',this.checked)">${NOMS(s.nom)}</label>`).join('')}</div>`;
   // en-tête : mois puis jours
   let mh = '', cur = null, cnt = 0;
@@ -229,15 +229,15 @@ function vueGantt() {
     const ts = G.taches.filter(t => t.employe === nom && t.fin >= deb && t.debut <= fin).sort((a, b) => a.debut.localeCompare(b.debut));
     const lanes = []; const place = ts.map(t => { let k = lanes.findIndex(f => f < t.debut); if (k < 0) { k = lanes.length; lanes.push(''); } lanes[k] = t.fin; return k; });
     const hLigne = Math.max(1, lanes.length) * 26 + 8 < 46 ? 46 : Math.max(1, lanes.length) * 26 + 8;
-    const cells = G.jours.map(j => `<div class="gd ${G.etat[nom][j.date] || ''} ${j.auj ? 'auj' : ''}" style="height:${hLigne}px" title="${G.etat[nom][j.date] === 'cp' ? 'Congé payé' : G.etat[nom][j.date] === 'absence' ? 'Absence' : ''}"></div>`).join('');
+    const cells = G.jours.map(j => `<div class="gd ${G.etat[nom][j.date] || ''} ${j.auj ? 'auj' : ''}" style="height:${hLigne}px" title="${({cp: 'Congé payé', absence: 'Absence', cfa: 'CFA'})[G.etat[nom][j.date]] || ''}"></div>`).join('');
     const bars = ts.map((t, i) => {
       const a = Math.max(0, Math.round((dd(t.debut < deb ? deb : t.debut) - dd(deb)) / 864e5)), b = Math.min(n - 1, Math.round((dd(t.fin) - dd(deb)) / 864e5));
       const tip = `${t.client} VK ${t.vk || ''} ${t.designation || ''} ${t.etape && t.etape !== 'toute' ? '· ' + t.etape_lib : ''} · ${hh(t.heures)} h · ${fmt(t.debut)} → ${fmt(t.fin)}${t.delai ? ' · délai ' + fmt(t.delai) : ''}${t.retard ? ' · EN RETARD' : ''}`;
       return `<div class="task ${t.statut} ${t.retard ? 'retard' : ''} ${t.manuel ? 'manuel' : ''}" style="left:${a * W + 1}px;width:${(b - a + 1) * W - 2}px;top:${place[i] * 26 + 4}px" title="${tip}" onclick="detail('${t.groupe}')">${t.client} · ${t.etape && t.etape !== 'toute' ? t.etape_lib + ' · ' : ''}${hh(t.heures)} h · ${etTxt(t)}</div>`;
     }).join('');
-    h += `<div class="gr"><div class="gn" style="height:${hLigne}px">${NOMS(nom)}<span class="sub">${hh(G.charge[nom]) || 0} h planifiées</span></div><div class="gdays" style="position:relative">${cells}${bars}</div></div>`;
+    h += `<div class="gr"><div class="gn" style="height:${hLigne}px">${NOMS(nom)}<span class="sub">${hh(G.charge[nom]) || 0} h planifiées · ${(G.salaries.find(x => x.nom === nom) || {}).h_semaine || 39} h/sem${(G.salaries.find(x => x.nom === nom) || {}).apprenti ? ' · apprenti' : ''}</span></div><div class="gdays" style="position:relative">${cells}${bars}</div></div>`;
   });
-  h += `</div></div><div class="legend"><span><i style="background:var(--ok)"></i>Complet</span><span><i style="background:#e08a00"></i>En fabrication</span><span><i style="background:#7a4fd6"></i>Au contrôle</span><span><i style="border:2px solid var(--ko)"></i>fini après le délai</span><span><i style="background:var(--cp)"></i>congé payé</span><span><i style="background:var(--abs)"></i>absence</span><span><i style="background:var(--fer)"></i>férié</span><span>📌 salarié choisi à la main</span></div>`;
+  h += `</div></div><div class="legend"><span><i style="background:var(--ok)"></i>Complet</span><span><i style="background:#e08a00"></i>En fabrication</span><span><i style="background:#7a4fd6"></i>Au contrôle</span><span><i style="border:2px solid var(--ko)"></i>fini après le délai</span><span><i style="background:var(--cp)"></i>congé payé</span><span><i style="background:var(--abs)"></i>absence</span><span><i style="background:#ffd6e7"></i>CFA</span><span><i style="background:var(--fer)"></i>férié</span><span>📌 salarié choisi à la main</span></div>`;
   const nbA = G.pretes.filter(x => !x.affectee).length;
   h += `<h3 style="margin:18px 0 8px">Affectation des commandes <span class="sub">(${nbA} à affecter sur ${G.pretes.length} · clique sur « Affecter » pour choisir qui travaille dessus)</span></h3><div class="wrap"><table>
     <thead><tr><th>Priorité</th><th>Client</th><th>N° VK</th><th>Désignation</th><th class="n">Heures</th><th>Délai</th><th>Début</th><th>Salarié(s)</th><th>Fin prévue</th><th>Étapes</th><th>Statut</th><th></th></tr></thead><tbody>${G.pretes.map((t, i) => `<tr>
@@ -245,7 +245,7 @@ function vueGantt() {
       <td><input type="date" value="${t.debut || ''}" title="Date de démarrage (vide = aujourd'hui)" onchange="majDebut('${t.groupe}',this.value)" style="width:128px"></td>
       <td style="white-space:normal;min-width:260px">${affTxt(t)}</td>
       <td class="${t.retard ? 'retard' : ''}">${t.fin_commande ? fmt(t.fin_commande) + (t.retard ? ' ⚠️' : '') : ''}</td>
-      <td>${chips(t)}</td><td>${selStatut(t)}</td><td><button class="${t.affectee ? '' : 'on'}" onclick="detail('${t.groupe}')">${t.affectee ? 'Modifier' : 'Affecter'}</button></td></tr>`).join('') || '<tr><td colspan="12" class="sub">Aucune commande au statut Complet, En fabrication ou Au contrôle. Change le statut dans l onglet Prioritaires.</td></tr>'}</tbody></table></div>`;
+      <td>${chips(t)}</td><td>${selStatut(t)}</td><td><button class="${t.affectee ? '' : 'on'}" onclick="detail('${t.groupe}')">${t.affectee ? 'Modifier' : 'Affecter'}</button></td></tr>`).join('') || '<tr><td colspan="12" class="sub">Aucune commande au statut Complet, En fabrication ou Au contrôle. Change le statut dans l’onglet Prioritaires.</td></tr>'}</tbody></table></div>`;
   if (G.en_attente.length) h += `<h3 style="margin:18px 0 8px">En attente <span class="sub">(${G.en_attente.length} commande(s) sans statut : passe-les en « Complet » pour pouvoir les affecter)</span></h3><div class="wrap"><table>
     <thead><tr><th>Client</th><th>N° VK</th><th>Désignation</th><th class="n">Heures</th><th>Délai</th><th>Indication JPV Stock</th><th>Statut</th></tr></thead><tbody>${G.en_attente.map(c => `<tr><td><b>${c.client || ''}</b></td><td>${c.vk || ''}</td><td>${c.designation || ''}</td><td class="n">${hh(c.heures) || '—'}</td><td>${fmt(c.delai)}</td><td class="ind ${c.stock}">${INDIC[c.stock]}${c.pre_affectee ? ' · 📌 salarié déjà choisi' : ''}</td><td>${selStatut(Object.assign({}, c, {statut: 'attente'}))}</td></tr>`).join('')}</tbody></table></div>`;
   if (G.sans_heures.length) h += `<div class="note"><b>${G.sans_heures.length} commande(s) sans heures dans l'Excel</b> (complètes mais non affectables) : ${G.sans_heures.map(s => s.client + ' ' + (s.vk || '') + (s.designation ? ' ' + s.designation : '')).join(' · ')}</div>`;
@@ -300,6 +300,36 @@ function resume() {
 function enregistrer() { affecter(LIG_G, LIG.filter(l => l.nom)); }
 function appliquer(groupe, noms) { affecter(groupe, noms.map(nom => ({etape: 'toute', nom, heures: null}))); }
 async function affecter(groupe, lignes) { await post('/api/affectation', {groupe, lignes}); $('panel').style.display = 'none'; rechargerGantt(); }
+
+/* ---------------------------------------------------------------- Salariés */
+let SAL = [];
+async function chargerSal() { SAL = (await (await fetch('/api/salaries')).json()).salaries; }
+const TYPES_PER = {cfa: 'CFA', absence: 'Absence', cp: 'Congé payé'};
+function vueSal() {
+  const actifs = SAL.filter(s => !s.parti), partis = SAL.filter(s => s.parti);
+  let h = `<p class="sub">Règle les salariés pris en compte dans le Gantt, leurs heures par semaine, et saisis ici les <b>semaines de CFA</b> (apprenti), absences et congés. Les jours fériés sont déjà gérés.</p>
+  <div class="wrap"><table><thead><tr><th>Salarié</th><th>Dans le Gantt</th><th>Heures / semaine</th><th>Apprenti</th><th>Périodes (CFA, absences, congés)</th><th></th></tr></thead><tbody>`;
+  h += actifs.map(s => { const i = SAL.indexOf(s); return `<tr><td><b>${NOMS(s.nom)}</b></td>
+    <td><input type="checkbox" ${s.actif ? 'checked' : ''} onchange="majSal(${i},'actif',this.checked?1:0)"></td>
+    <td><input type="number" min="1" max="60" step="0.5" value="${s.h_semaine}" style="width:70px" onchange="majSal(${i},'h_semaine',parseFloat(this.value)||39)"> h <span class="sub">(${hh((s.h_semaine - 5) / 4)} h du lun. au jeu., 5 h le ven.)</span></td>
+    <td><input type="checkbox" ${s.apprenti ? 'checked' : ''} onchange="majSal(${i},'apprenti',this.checked?1:0)"></td>
+    <td style="white-space:normal;min-width:330px">${s.periodes.map(p => `<span class="sub" style="display:inline-block;margin:0 8px 3px 0;padding:2px 8px;border:1px solid var(--line);border-radius:99px"><b>${TYPES_PER[p.type] || p.type}</b> ${fmt(p.debut)} → ${fmt(p.fin)} <a href="#" onclick="supprimerPeriode(${p.id});return false" title="Supprimer">✕</a></span>`).join('')}
+      <div style="margin-top:4px"><select id="pt_${i}">${Object.entries(TYPES_PER).map(([k, l]) => `<option value="${k}" ${s.apprenti && k === 'cfa' ? 'selected' : ''}>${l}</option>`).join('')}</select>
+      du <input type="date" id="pd_${i}" style="width:128px"> au <input type="date" id="pf_${i}" style="width:128px"> <button onclick="ajouterPeriode(${i})">+ Ajouter</button></div></td>
+    <td><button onclick="retirerSal(${i})" title="N'est plus salarié">Retirer</button></td></tr>`; }).join('');
+  h += `</tbody></table></div>`;
+  if (partis.length) h += `<h3 style="margin:16px 0 6px">Anciens salariés <span class="sub">(jamais planifiés)</span></h3>${partis.map(s => `<span class="sub" style="margin-right:12px">${NOMS(s.nom)} <button onclick="majSal(${SAL.indexOf(s)},'parti',0)">Réintégrer</button></span>`).join('')}`;
+  $('vue').innerHTML = h;
+}
+async function majSal(i, champ, v) { await post('/api/salarie', {nom: SAL[i].nom, [champ]: v}); await chargerSal(); afficher(); }
+async function retirerSal(i) { if (confirm(NOMS(SAL[i].nom) + " n'est plus salarié ? Il ne sera plus planifié (tu pourras le réintégrer).")) majSal(i, 'parti', 1); }
+async function ajouterPeriode(i) {
+  const debut = $('pd_' + i).value, fin = $('pf_' + i).value || $('pd_' + i).value;
+  if (!debut) return alert('Choisis la date de début.');
+  if (fin < debut) return alert('La date de fin est avant la date de début.');
+  await post('/api/periode', {nom: SAL[i].nom, debut, fin, type: $('pt_' + i).value}); await chargerSal(); afficher();
+}
+async function supprimerPeriode(id) { await post('/api/periode_supprimer', {id}); await chargerSal(); afficher(); }
 
 /* ---------------------------------------------------------------- Rappels */
 function vueRapp() {

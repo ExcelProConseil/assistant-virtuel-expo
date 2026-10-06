@@ -2,6 +2,9 @@
 import sqlite3, pathlib
 
 DB = pathlib.Path(__file__).resolve().parent.parent / "data" / "jpv.db"
+# réglages appliqués une seule fois aux salariés connus (modifiables ensuite dans l'onglet Salariés)
+DEFAUTS_SALARIES = {"BENJAMIN BRAULT": dict(parti=1), "LEO MILLET": dict(parti=1),
+                    "MAEL LONGUET": dict(h_semaine=35, apprenti=1)}
 CHAMPS = ["vk", "mois", "ordre", "groupe", "client", "cde", "type", "nomenc", "designation", "qte",
           "date_recep", "date_ar", "delai", "rec_prod", "etape", "depart", "h_unit", "h_reelles",
           "h_tot", "ca_unit", "ca_total", "couleur", "principale", "livree", "et_u", "et_a", "et_c"]
@@ -21,6 +24,7 @@ def connecter():
     CREATE TABLE IF NOT EXISTS etapes (groupe TEXT, etape TEXT, fait INTEGER, PRIMARY KEY (groupe, etape));   -- étapes cochées à la main
     CREATE TABLE IF NOT EXISTS meta (cle TEXT PRIMARY KEY, valeur TEXT);
     CREATE TABLE IF NOT EXISTS employes (nom TEXT PRIMARY KEY, ordre INTEGER, actif INTEGER DEFAULT 1);
+    CREATE TABLE IF NOT EXISTS periodes (id INTEGER PRIMARY KEY AUTOINCREMENT, nom TEXT, debut TEXT, fin TEXT, type TEXT);   -- CFA, absences saisies à la main
     CREATE TABLE IF NOT EXISTS absences (jour TEXT, nom TEXT, type TEXT, PRIMARY KEY (jour, nom));
     CREATE TABLE IF NOT EXISTS affectations (groupe TEXT, etape TEXT DEFAULT 'toute', nom TEXT, heures REAL, PRIMARY KEY (groupe, etape, nom));
     """)
@@ -28,6 +32,15 @@ def connecter():
     for c, t in COLONNES.items():                     # ajoute les colonnes manquantes (anciennes bases)
         if c not in existantes and c != "vk":
             con.execute(f"ALTER TABLE lignes ADD COLUMN {c} {t}")
+    cols_e = {r[1] for r in con.execute("PRAGMA table_info(employes)")}
+    for c, t in (("h_semaine", "REAL DEFAULT 39"), ("apprenti", "INTEGER DEFAULT 0"), ("parti", "INTEGER DEFAULT 0")):
+        if c not in cols_e:
+            con.execute(f"ALTER TABLE employes ADD COLUMN {c} {t}")
+    if not con.execute("SELECT 1 FROM meta WHERE cle='salaries_v2'").fetchone():            # réglages de départ, une seule fois
+        for nom, d in DEFAUTS_SALARIES.items():
+            for k, v in d.items():
+                con.execute(f"UPDATE employes SET {k}=? WHERE nom=?", (v, nom))
+        con.execute("INSERT INTO meta VALUES ('salaries_v2', '1')")
     if "etape" not in {r[1] for r in con.execute("PRAGMA table_info(affectations)")}:   # anciennes versions : sans étape
         cols = {r[1] for r in con.execute("PRAGMA table_info(affectations)")}
         h = "heures" if "heures" in cols else "NULL"
@@ -57,9 +70,12 @@ def remplacer_lignes_excel(con, lignes):
     con.commit()
 
 def remplacer_salaries(con, employes, absences):
-    """employes : [(nom, ordre)], absences : [(jour, nom, type)]. L'option « actif » est conservée."""
+    """employes : [(nom, ordre)], absences : [(jour, nom, type)]. Les réglages (actif, heures, parti…) sont conservés."""
     for nom, ordre in employes:
-        con.execute("INSERT INTO employes (nom, ordre) VALUES (?,?) ON CONFLICT(nom) DO UPDATE SET ordre=excluded.ordre", (nom, ordre))
+        d = DEFAUTS_SALARIES.get(nom, {})
+        con.execute("INSERT INTO employes (nom, ordre, h_semaine, apprenti, parti) VALUES (?,?,?,?,?) "
+                    "ON CONFLICT(nom) DO UPDATE SET ordre=excluded.ordre",
+                    (nom, ordre, d.get("h_semaine", 39), d.get("apprenti", 0), d.get("parti", 0)))
     con.execute("DELETE FROM absences")
     con.executemany("INSERT OR REPLACE INTO absences VALUES (?,?,?)", absences)
     con.commit()

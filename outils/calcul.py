@@ -71,19 +71,26 @@ def feries(annee):
             p + un(50), dt.date(annee, 7, 14), dt.date(annee, 8, 15), dt.date(annee, 11, 1),
             dt.date(annee, 11, 11), dt.date(annee, 12, 25)}
 
-def capacite_base(jour, ferie):
+def capacite_base(jour, ferie, h_semaine=39.0):
     if jour in ferie or jour.weekday() >= 5: return 0.0
-    return H_VEN if jour.weekday() == 4 else H_LUN_JEU
+    # vendredi : 5 h ; lundi-jeudi : le reste de la semaine (39 h -> 8,5 h ; 35 h -> 7,5 h)
+    return H_VEN if jour.weekday() == 4 else max(0.0, (h_semaine - H_VEN) / 4)
 
 # ------------------------------------------------------------------ Gantt
 def gantt(con, cmds, debut, nb_jours, aujourdhui=None, horizon=400):
     """Répartit les commandes à produire sur les salariés actifs, dans l'ordre de priorité."""
     auj = aujourdhui or dt.date.today()
-    emps = [r["nom"] for r in con.execute("SELECT nom FROM employes WHERE actif=1 ORDER BY ordre")]
-    tous = [dict(nom=r["nom"], actif=bool(r["actif"])) for r in con.execute("SELECT nom, actif FROM employes ORDER BY ordre")]
+    hsem = {r["nom"]: r["h_semaine"] or 39.0 for r in con.execute("SELECT nom, h_semaine FROM employes")}
+    emps = [r["nom"] for r in con.execute("SELECT nom FROM employes WHERE actif=1 AND parti=0 ORDER BY ordre")]   # les salariés partis ne sont jamais planifiés
+    tous = [dict(nom=r["nom"], actif=bool(r["actif"]), h_semaine=r["h_semaine"] or 39.0, apprenti=bool(r["apprenti"]))
+            for r in con.execute("SELECT nom, actif, h_semaine, apprenti FROM employes WHERE parti=0 ORDER BY ordre")]
     abs_ = {}
     for r in con.execute("SELECT jour, nom, type FROM absences"):
         abs_[(r["jour"], r["nom"])] = r["type"]
+    for r in con.execute("SELECT nom, debut, fin, type FROM periodes"):          # CFA et absences saisies à la main
+        d0, d1 = _date(r["debut"]), _date(r["fin"])
+        while d0 and d1 and d0 <= d1:
+            abs_[(d0.isoformat(), r["nom"])] = r["type"]; d0 += dt.timedelta(days=1)
     ferie = set()
     for a in {auj.year - 1, auj.year, auj.year + 1, auj.year + 2}: ferie |= feries(a)
     demarrage = {r["groupe"]: _date(r["jour"]) for r in con.execute("SELECT groupe, jour FROM demarrages")}
@@ -93,7 +100,7 @@ def gantt(con, cmds, debut, nb_jours, aujourdhui=None, horizon=400):
 
     def cap(nom, j):
         if (j.isoformat(), nom) in abs_: return 0.0
-        return capacite_base(j, ferie)
+        return capacite_base(j, ferie, hsem.get(nom, 39.0))
 
     charge = {n: {} for n in emps}
     def placer(nom, heures, depuis):

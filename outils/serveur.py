@@ -41,6 +41,12 @@ class H(BaseHTTPRequestHandler):
             con = connecter(); cmds, _ = commandes(con)
             g = gantt(con, cmds, dt.date.today(), 1)
             return self._send(200, {"rappels": rappels(cmds, g)})
+        if self.path.startswith("/api/salaries"):
+            con = connecter()
+            sal = [dict(r) for r in con.execute("SELECT nom, actif, h_semaine, apprenti, parti FROM employes ORDER BY ordre")]
+            for s_ in sal:
+                s_["periodes"] = [dict(r) for r in con.execute("SELECT id, debut, fin, type FROM periodes WHERE nom=? ORDER BY debut", (s_["nom"],))]
+            return self._send(200, {"salaries": sal})
         if self.path.startswith("/api/gantt"):
             q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
             con = connecter()
@@ -66,6 +72,18 @@ class H(BaseHTTPRequestHandler):
                     if not r.get("nom"): continue
                     con.execute("INSERT OR REPLACE INTO affectations VALUES (?,?,?,?)", (d["groupe"], r.get("etape") or "toute", r["nom"], r.get("heures") or None))
                 con.commit(); return self._send(200, {"ok": True})
+            if self.path == "/api/salarie":          # {nom, actif?, h_semaine?, apprenti?, parti?}
+                d = json.loads(corps)
+                for k in ("actif", "h_semaine", "apprenti", "parti"):
+                    if k in d: con.execute(f"UPDATE employes SET {k}=? WHERE nom=?", (d[k], d["nom"]))
+                con.commit(); return self._send(200, {"ok": True})
+            if self.path == "/api/periode":          # {nom, debut, fin, type: cfa|absence}
+                d = json.loads(corps); dt.date.fromisoformat(d["debut"]); dt.date.fromisoformat(d["fin"])
+                if d["type"] not in ("cfa", "absence", "cp"): raise ValueError("type inconnu")
+                con.execute("INSERT INTO periodes (nom, debut, fin, type) VALUES (?,?,?,?)", (d["nom"], d["debut"], d["fin"], d["type"]))
+                con.commit(); return self._send(200, {"ok": True})
+            if self.path == "/api/periode_supprimer":  # {id}
+                con.execute("DELETE FROM periodes WHERE id=?", (json.loads(corps)["id"],)); con.commit(); return self._send(200, {"ok": True})
             if self.path == "/api/employe":
                 d = json.loads(corps)
                 con.execute("UPDATE employes SET actif=? WHERE nom=?", (1 if d["actif"] else 0, d["nom"]))
