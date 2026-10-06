@@ -38,6 +38,7 @@ def commandes(con, aujourdhui=None):
         manque = sum(l["statut"] in ("manque", "inconnu") for l in lignes)
         d = min(delais) if delais else None
         cmds.append(dict(groupe=g, mois=p["mois"], client=p["client"], cde=p["cde"], type=p["type"],
+                         vk=p["vk"], vks=[l["vk"] for l in lignes], designation=p["designation"],
                          delai=d.isoformat() if d else None,
                          ca=sum(l["ca_total"] or 0 for l in lignes),
                          heures=sum(l["h_tot"] or 0 for l in lignes),
@@ -108,19 +109,20 @@ def gantt(con, cmds, debut, nb_jours, aujourdhui=None, horizon=400):
         seg = placer(n, h, auj)
         return seg[-1][0] if seg else None
 
-    # seules les commandes COMPLÈTES (tout le matériel en stock) sont planifiées ; les affectations
-    # déjà choisies pour une commande incomplète sont conservées et s'appliqueront quand elle sera complète
+    # Seules les commandes COMPLÈTES (tout le matériel en stock) peuvent être affectées, et c'est TOI qui
+    # choisis le salarié : rien n'est placé automatiquement. Un choix fait pour une commande encore
+    # incomplète est conservé et s'appliquera quand elle sera complète.
     a_faire = [c for c in cmds if c["statut"] == "complete" and c["heures"] > 0]
     a_faire.sort(key=lambda c: (c["delai"] or "9999", c["groupe"]))
-    taches, options = [], {}
+    taches, options, pretes = [], {}, []
     sans_heures = [c for c in cmds if c["statut"] == "complete" and c["heures"] <= 0]
-    en_attente = [dict(groupe=c["groupe"], client=c["client"], cde=c["cde"], delai=c["delai"],
-                       heures=round(c["heures"], 2), nb_manque=c["nb_manque"], nb_lignes=len(c["lignes"]),
-                       pre_affectee=c["groupe"] in manuel)
+    en_attente = [dict(groupe=c["groupe"], client=c["client"], cde=c["cde"], vk=c["vk"], designation=c["designation"],
+                       delai=c["delai"], heures=round(c["heures"], 2), nb_manque=c["nb_manque"],
+                       nb_lignes=len(c["lignes"]), pre_affectee=c["groupe"] in manuel)
                   for c in cmds if c["statut"] == "incomplete"]
     for c in a_faire:
         d = _date(c["delai"])
-        # simulation : combien de personnes pour tenir le délai ? (les n salariés qui finiraient le plus tôt)
+        # aide : combien de personnes pour tenir le délai ? (les n salariés qui finiraient le plus tôt)
         opts = []
         for k in range(1, min(4, len(emps)) + 1):
             fins = sorted(((fin_de(n, c["heures"] / k), n) for n in emps), key=lambda x: (x[0] is None, x[0]))[:k]
@@ -128,27 +130,25 @@ def gantt(con, cmds, debut, nb_jours, aujourdhui=None, horizon=400):
             fin = max(f for f, _ in fins)
             opts.append(dict(n=k, fin=fin.isoformat(), noms=[n for _, n in fins], ok=bool(d is None or fin <= d)))
         options[c["groupe"]] = opts
-        est_manuel = c["groupe"] in manuel and partager(c["heures"], manuel[c["groupe"]])
-        if est_manuel:
-            parts = partager(c["heures"], manuel[c["groupe"]])
-        elif opts:
-            parts = [(opts[0]["noms"][0], c["heures"])]
-        else:
-            continue
+        parts = partager(c["heures"], manuel[c["groupe"]]) if c["groupe"] in manuel else []
         placees = []
         for n, h in parts:
             seg = placer(n, h, auj)
             if not seg: continue
             for j, hh in seg: charge[n][j] = charge[n].get(j, 0.0) + hh
             placees.append((n, h, seg))
-        if not placees: continue
-        fin_cmd = max(seg[-1][0] for _, _, seg in placees)
+        fin_cmd = max(seg[-1][0] for _, _, seg in placees) if placees else None
+        retard = bool(d and fin_cmd and fin_cmd > d)
+        pretes.append(dict(groupe=c["groupe"], client=c["client"], cde=c["cde"], vk=c["vk"], designation=c["designation"],
+                           delai=c["delai"], heures_total=round(c["heures"], 2), affectee=bool(placees),
+                           affectees=[dict(nom=n, heures=round(h, 2)) for n, h, _ in placees],
+                           fin_commande=fin_cmd.isoformat() if fin_cmd else None, retard=retard))
         for n, h, seg in placees:
-            taches.append(dict(groupe=c["groupe"], client=c["client"], cde=c["cde"], employe=n,
-                               manuel=bool(est_manuel), debut=seg[0][0].isoformat(), fin=seg[-1][0].isoformat(),
-                               heures=round(h, 2), fixe=any(n == nm and hh_ for nm, hh_ in manuel.get(c['groupe'], [])), heures_total=round(c["heures"], 2), statut=c["statut"],
-                               delai=c["delai"], fin_commande=fin_cmd.isoformat(),
-                               retard=bool(d and fin_cmd > d)))
+            taches.append(dict(groupe=c["groupe"], client=c["client"], cde=c["cde"], vk=c["vk"], designation=c["designation"],
+                               employe=n, manuel=True, debut=seg[0][0].isoformat(), fin=seg[-1][0].isoformat(),
+                               heures=round(h, 2), fixe=any(n == nm and hh_ for nm, hh_ in manuel.get(c["groupe"], [])),
+                               heures_total=round(c["heures"], 2), statut=c["statut"], delai=c["delai"],
+                               fin_commande=fin_cmd.isoformat(), retard=retard))
     jours = []
     for i in range(nb_jours):
         j = debut + dt.timedelta(days=i)
@@ -158,6 +158,6 @@ def gantt(con, cmds, debut, nb_jours, aujourdhui=None, horizon=400):
         for jr in jours:
             t = abs_.get((jr["date"], n))
             etat[n][jr["date"]] = t or ("ferie" if jr["ferie"] else ("we" if jr["we"] else ""))
-    return dict(salaries=tous, jours=jours, etat=etat, taches=taches, options=options, en_attente=en_attente,
-                sans_heures=[dict(groupe=c["groupe"], client=c["client"], delai=c["delai"]) for c in sans_heures],
+    return dict(salaries=tous, jours=jours, etat=etat, taches=taches, options=options, pretes=pretes, en_attente=en_attente,
+                sans_heures=[dict(groupe=c["groupe"], client=c["client"], vk=c["vk"], designation=c["designation"], delai=c["delai"]) for c in sans_heures],
                 charge={n: round(sum(h for j, h in charge[n].items()), 1) for n in emps})
