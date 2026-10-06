@@ -14,6 +14,9 @@ def _date(s):
 
 STATUTS = ("complet", "fabrication", "controle", "livree")      # + "attente" quand rien n'est choisi
 ETAPES = (("usinage", "Usinage / Prépa fil", "U"), ("acompte", "Acompte", "A"), ("controle", "Contrôle / Emballage", "C"))
+PHASES = (("toute", "Toute la commande"), ("usinage", "Usinage / Prépa fil"), ("montage", "Câblage / Montage"), ("controle", "Contrôle / Emballage"), ("autre", "Autre"))
+RANG = {k: i for i, (k, _) in enumerate(PHASES)}
+LIB_PHASE = dict(PHASES)
 A_PLANIFIER = ("complet", "fabrication", "controle")             # commandes affectables à un salarié
 
 def commandes(con, aujourdhui=None):
@@ -85,8 +88,8 @@ def gantt(con, cmds, debut, nb_jours, aujourdhui=None, horizon=400):
     for a in {auj.year - 1, auj.year, auj.year + 1, auj.year + 2}: ferie |= feries(a)
     demarrage = {r["groupe"]: _date(r["jour"]) for r in con.execute("SELECT groupe, jour FROM demarrages")}
     manuel = {}
-    for r in con.execute("SELECT groupe, nom, heures FROM affectations"):
-        manuel.setdefault(r["groupe"], []).append((r["nom"], r["heures"]))
+    for r in con.execute("SELECT groupe, etape, nom, heures FROM affectations"):
+        manuel.setdefault(r["groupe"], []).append((r["etape"] or "toute", r["nom"], r["heures"]))
 
     def cap(nom, j):
         if (j.isoformat(), nom) in abs_: return 0.0
@@ -105,12 +108,13 @@ def gantt(con, cmds, debut, nb_jours, aujourdhui=None, horizon=400):
         return None
 
     def partager(total, liste):
-        """Heures de chaque personne : celles saisies, le reste réparti à parts égales entre les autres."""
-        liste = [(n, h) for n, h in liste if n in charge]
-        fixes = sum(h for n, h in liste if h)
-        libres = [n for n, h in liste if not h]
+        """Lignes (étape, salarié, heures|None) -> heures de chacun : celles saisies, le reste est réparti
+        à parts égales entre les lignes sans heures."""
+        liste = [(e, n, h) for e, n, h in liste if n in charge]
+        fixes = sum(h for _, _, h in liste if h)
+        libres = [1 for _, _, h in liste if not h]
         part = max(0.0, total - fixes) / len(libres) if libres else 0.0
-        return [(n, h or part) for n, h in liste if (h or part) > 0]
+        return [(e, n, h or part) for e, n, h in liste if (h or part) > 0]
 
     def fin_de(n, h, depuis):
         seg = placer(n, h, depuis)
@@ -139,22 +143,28 @@ def gantt(con, cmds, debut, nb_jours, aujourdhui=None, horizon=400):
             opts.append(dict(n=k, fin=fin.isoformat(), noms=[n for _, n in fins], ok=bool(d is None or fin <= d)))
         options[c["groupe"]] = opts
         parts = partager(c["heures"], manuel[c["groupe"]]) if c["groupe"] in manuel else []
-        placees = []
-        for n, h in parts:
-            seg = placer(n, h, depuis)
-            if not seg: continue
-            for j, hh in seg: charge[n][j] = charge[n].get(j, 0.0) + hh
-            placees.append((n, h, seg))
-        fin_cmd = max(seg[-1][0] for _, _, seg in placees) if placees else None
+        placees, fin_prec = [], depuis
+        for rang in sorted({RANG.get(e, 4) for e, _, _ in parts}):       # les étapes s'enchaînent dans l'ordre
+            fins = []
+            for e, n, h in [x for x in parts if RANG.get(x[0], 4) == rang]:
+                seg = placer(n, h, fin_prec)
+                if not seg: continue
+                for j, hh in seg: charge[n][j] = charge[n].get(j, 0.0) + hh
+                placees.append((e, n, h, seg)); fins.append(seg[-1][0])
+            if fins: fin_prec = max(fins)
+        fin_cmd = max(seg[-1][0] for _, _, _, seg in placees) if placees else None
         retard = bool(d and fin_cmd and fin_cmd > d)
         pretes.append(dict(groupe=c["groupe"], client=c["client"], cde=c["cde"], vk=c["vk"], designation=c["designation"],
-                           delai=c["delai"], heures_total=round(c["heures"], 2), affectee=bool(placees), statut=c["statut"], etapes=c["etapes"], debut=depuis.isoformat() if c["groupe"] in demarrage and demarrage[c["groupe"]] else None, stock=c["stock"],
-                           affectees=[dict(nom=n, heures=round(h, 2)) for n, h, _ in placees],
+                           delai=c["delai"], heures_total=round(c["heures"], 2), affectee=bool(placees), statut=c["statut"], etapes=c["etapes"],
+                           debut=depuis.isoformat() if demarrage.get(c["groupe"]) else None, stock=c["stock"],
+                           affectees=[dict(etape=e, etape_lib=LIB_PHASE.get(e, e), nom=n, heures=round(h, 2)) for e, n, h, _ in placees],
+                           heures_affectees=round(sum(h for _, _, h, _ in placees), 2),
                            fin_commande=fin_cmd.isoformat() if fin_cmd else None, retard=retard))
-        for n, h, seg in placees:
+        for e, n, h, seg in placees:
             taches.append(dict(groupe=c["groupe"], client=c["client"], cde=c["cde"], vk=c["vk"], designation=c["designation"],
-                               employe=n, manuel=True, debut=seg[0][0].isoformat(), fin=seg[-1][0].isoformat(),
-                               heures=round(h, 2), fixe=any(n == nm and hh_ for nm, hh_ in manuel.get(c["groupe"], [])),
+                               employe=n, etape=e, etape_lib=LIB_PHASE.get(e, e), manuel=True,
+                               debut=seg[0][0].isoformat(), fin=seg[-1][0].isoformat(),
+                               heures=round(h, 2), fixe=any(e == e2 and n == n2 and h2 for e2, n2, h2 in manuel.get(c["groupe"], [])),
                                heures_total=round(c["heures"], 2), statut=c["statut"], etapes=c["etapes"], delai=c["delai"],
                                fin_commande=fin_cmd.isoformat(), retard=retard))
     jours = []

@@ -66,7 +66,7 @@ tfoot td{font-weight:700;position:sticky;bottom:0;background:var(--card);border-
 .task.manuel::before{content:"📌 "}
 .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--mut);margin:10px 0}
 .legend i{display:inline-block;width:14px;height:14px;border-radius:3px;vertical-align:middle;margin-right:4px;border:1px solid var(--line)}
-.panel{position:fixed;right:16px;bottom:16px;width:320px;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.25);padding:14px;z-index:20;display:none}
+.panel{position:fixed;right:16px;bottom:16px;width:430px;max-width:calc(100vw - 32px);max-height:92vh;overflow-y:auto;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.25);padding:14px;z-index:20;display:none}
 .panel h3{margin:0 0 6px;font-size:15px}.panel p{margin:4px 0}.panel .x{position:absolute;right:10px;top:8px;border:0;background:none;font-size:18px}
 .chk{display:flex;gap:12px;flex-wrap:wrap;font-size:13px}
 .chk label{display:flex;gap:5px;align-items:center;cursor:pointer}
@@ -232,8 +232,8 @@ function vueGantt() {
     const cells = G.jours.map(j => `<div class="gd ${G.etat[nom][j.date] || ''} ${j.auj ? 'auj' : ''}" style="height:${hLigne}px" title="${G.etat[nom][j.date] === 'cp' ? 'Congé payé' : G.etat[nom][j.date] === 'absence' ? 'Absence' : ''}"></div>`).join('');
     const bars = ts.map((t, i) => {
       const a = Math.max(0, Math.round((dd(t.debut < deb ? deb : t.debut) - dd(deb)) / 864e5)), b = Math.min(n - 1, Math.round((dd(t.fin) - dd(deb)) / 864e5));
-      const tip = `${t.client} VK ${t.vk || ''} ${t.designation || ''} · ${hh(t.heures)} h · ${fmt(t.debut)} → ${fmt(t.fin)}${t.delai ? ' · délai ' + fmt(t.delai) : ''}${t.retard ? ' · EN RETARD' : ''}`;
-      return `<div class="task ${t.statut} ${t.retard ? 'retard' : ''} ${t.manuel ? 'manuel' : ''}" style="left:${a * W + 1}px;width:${(b - a + 1) * W - 2}px;top:${place[i] * 26 + 4}px" title="${tip}" onclick="detail('${t.groupe}')">${t.client} · ${hh(t.heures)} h · ${etTxt(t)}</div>`;
+      const tip = `${t.client} VK ${t.vk || ''} ${t.designation || ''} ${t.etape && t.etape !== 'toute' ? '· ' + t.etape_lib : ''} · ${hh(t.heures)} h · ${fmt(t.debut)} → ${fmt(t.fin)}${t.delai ? ' · délai ' + fmt(t.delai) : ''}${t.retard ? ' · EN RETARD' : ''}`;
+      return `<div class="task ${t.statut} ${t.retard ? 'retard' : ''} ${t.manuel ? 'manuel' : ''}" style="left:${a * W + 1}px;width:${(b - a + 1) * W - 2}px;top:${place[i] * 26 + 4}px" title="${tip}" onclick="detail('${t.groupe}')">${t.client} · ${t.etape && t.etape !== 'toute' ? t.etape_lib + ' · ' : ''}${hh(t.heures)} h · ${etTxt(t)}</div>`;
     }).join('');
     h += `<div class="gr"><div class="gn" style="height:${hLigne}px">${NOMS(nom)}<span class="sub">${hh(G.charge[nom]) || 0} h planifiées</span></div><div class="gdays" style="position:relative">${cells}${bars}</div></div>`;
   });
@@ -243,7 +243,7 @@ function vueGantt() {
     <thead><tr><th>Priorité</th><th>Client</th><th>N° VK</th><th>Désignation</th><th class="n">Heures</th><th>Délai</th><th>Début</th><th>Salarié(s)</th><th>Fin prévue</th><th>Étapes</th><th>Statut</th><th></th></tr></thead><tbody>${G.pretes.map((t, i) => `<tr>
       <td>${i + 1}</td><td><b>${t.client || ''}</b></td><td>${t.vk || ''}</td><td>${t.designation || ''}</td><td class="n">${hh(t.heures_total)}</td><td>${fmt(t.delai)}</td>
       <td><input type="date" value="${t.debut || ''}" title="Date de démarrage (vide = aujourd'hui)" onchange="majDebut('${t.groupe}',this.value)" style="width:128px"></td>
-      <td>${t.affectee ? '📌 ' + t.affectees.map(p => NOMS(p.nom) + (t.affectees.length > 1 ? ' (' + hh(p.heures) + ' h)' : '')).join(', ') : '<span class="sub">— à affecter —</span>'}</td>
+      <td style="white-space:normal;min-width:260px">${affTxt(t)}</td>
       <td class="${t.retard ? 'retard' : ''}">${t.fin_commande ? fmt(t.fin_commande) + (t.retard ? ' ⚠️' : '') : ''}</td>
       <td>${chips(t)}</td><td>${selStatut(t)}</td><td><button class="${t.affectee ? '' : 'on'}" onclick="detail('${t.groupe}')">${t.affectee ? 'Modifier' : 'Affecter'}</button></td></tr>`).join('') || '<tr><td colspan="12" class="sub">Aucune commande au statut Complet, En fabrication ou Au contrôle. Change le statut dans l onglet Prioritaires.</td></tr>'}</tbody></table></div>`;
   if (G.en_attente.length) h += `<h3 style="margin:18px 0 8px">En attente <span class="sub">(${G.en_attente.length} commande(s) sans statut : passe-les en « Complet » pour pouvoir les affecter)</span></h3><div class="wrap"><table>
@@ -254,33 +254,52 @@ function vueGantt() {
 async function rechargerGantt() { await chargerGantt(); try { RAPP = (await (await fetch('/api/rappels')).json()).rappels; } catch (e) {} afficher(); }
 function decaler(j) { gDebut.setDate(gDebut.getDate() + j); rechargerGantt(); }
 async function inclure(nom, actif) { await post('/api/employe', {nom, actif}); rechargerGantt(); }
+const PHASES = [['toute', 'Toute la commande'], ['usinage', 'Usinage / Prépa fil'], ['montage', 'Câblage / Montage'], ['controle', 'Contrôle / Emballage'], ['autre', 'Autre']];
+let LIG = [], LIG_G = null;
+// texte « qui fait quoi » : étapes enchaînées par →
+function affTxt(t) {
+  if (!t.affectee) return '<span class="sub">— à affecter —</span>';
+  const parPhase = [];
+  t.affectees.forEach(a => { let p = parPhase.find(x => x.e === a.etape); if (!p) { p = {e: a.etape, lib: a.etape_lib, l: []}; parPhase.push(p); } p.l.push(NOMS(a.nom) + ' (' + hh(a.heures) + ' h)'); });
+  return '📌 ' + parPhase.map(p => (p.e === 'toute' ? '' : '<b>' + p.lib + '</b> : ') + p.l.join(', ')).join(' → ');
+}
 function detail(groupe) {
   const p = G.pretes.find(x => x.groupe === groupe), c = CMD.find(x => x.groupe === groupe); if (!p) return;
-  const parts = G.taches.filter(x => x.groupe === groupe), opts = G.options[groupe] || [], manuel = parts.length > 0;
-  const mine = Object.fromEntries(parts.map(x => [x.employe, x]));
+  const parts = G.taches.filter(x => x.groupe === groupe), opts = G.options[groupe] || [];
+  LIG_G = groupe; LIG = parts.map(t => ({etape: t.etape || 'toute', nom: t.employe, heures: t.fixe ? t.heures : null}));
+  if (!LIG.length) LIG = [{etape: 'toute', nom: '', heures: null}];
   const aide = o => `${o.n} pers. → fin le <b>${fmt(o.fin)}</b> ${o.ok ? '✅' : '❌'} <button onclick='appliquer("${groupe}",${JSON.stringify(o.noms)})'>Appliquer</button><div class="sub">${o.noms.map(NOMS).join(', ')}</div>`;
   $('panel').style.display = 'block';
   $('panel').innerHTML = `<button class="x" onclick="$('panel').style.display='none'">×</button>
     <h3>${c.client} <span class="sub">VK ${p.vk || ''}</span></h3><p class="sub">${p.designation || ''}</p>
-    <p>${hh(p.heures_total)} h au total · statut : <b>${LIB[p.statut]}</b> · <span class="ind ${p.stock}">${INDIC[p.stock]}</span></p>
+    <p><b id="totH">${hh(p.heures_total)}</b> h au total · statut : <b>${LIB[p.statut]}</b> · <span class="ind ${p.stock}">${INDIC[p.stock]}</span></p>
     <p>Délai client : <b class="${p.retard ? 'retard' : ''}">${fmt(p.delai) || '—'}</b>${p.fin_commande ? ' · fin prévue : <b class="' + (p.retard ? 'retard' : '') + '">' + fmt(p.fin_commande) + '</b>' + (p.retard ? ' ⚠️ en retard' : '') : ''}</p>
     <p>Début : <input type="date" value="${p.debut || ''}" onchange="majDebut('${groupe}',this.value)"> <span class="sub">(vide = aujourd'hui · mets une date passée si c'est déjà commencé)</span></p>
-    <p>Étapes : ${chips(p)} <span class="sub">U usinage/prépa fil · A acompte · C contrôle/emballage</span></p>
-    <p><b>Qui travaille dessus ?</b> <span class="sub">(coche, et indique les heures de chacun, ou laisse vide pour répartir à parts égales)</span></p>
-    <div id="aff">${G.salaries.filter(s => s.actif).map(s => `<div style="display:flex;gap:6px;align-items:center;margin:3px 0"><label style="flex:1"><input type="checkbox" value="${s.nom}" ${manuel && mine[s.nom] ? 'checked' : ''}> ${NOMS(s.nom)}</label>
-      <input type="number" min="0" step="0.5" placeholder="auto" style="width:70px" data-h="${s.nom}" value="${manuel && mine[s.nom] && mine[s.nom].fixe ? mine[s.nom].heures : ''}"> h</div>`).join('')}</div>
-    <p><button class="on" onclick="enregistrer('${groupe}')">Enregistrer</button> <button onclick="affecter('${groupe}',[])">Retirer l'affectation</button></p>
+    <p>Étapes faites : ${chips(p)} <span class="sub">U usinage/prépa fil · A acompte · C contrôle/emballage</span></p>
+    <p><b>Qui fait quoi ?</b> <span class="sub">Les étapes s'enchaînent dans l'ordre ; plusieurs salariés sur la même étape travaillent en même temps. Heures vides = répartition automatique du reste.</span></p>
+    <div id="lignes"></div>
+    <p><button onclick="ajouterLigne()">+ Ajouter une ligne</button></p><p id="resume" class="sub"></p>
+    <p><button class="on" onclick="enregistrer()">Enregistrer</button> <button onclick="affecter('${groupe}',[])">Retirer l'affectation</button></p>
     <p><b>Aide : combien de personnes pour tenir le délai ?</b></p>${opts.map(o => `<p>${aide(o)}</p>`).join('') || '<p class="sub">—</p>'}`;
+  rendreLignes();
 }
-function enregistrer(groupe) {
-  const rep = [...document.querySelectorAll('#aff input[type=checkbox]:checked')].map(i => {
-    const h = parseFloat(document.querySelector(`#aff input[data-h="${i.value.replace(/"/g, '\\"')}"]`).value);
-    return {nom: i.value, heures: h > 0 ? h : null};
-  });
-  affecter(groupe, rep);
+function rendreLignes() {
+  const emps = G.salaries.filter(s => s.actif);
+  $('lignes').innerHTML = LIG.map((l, i) => `<div style="display:flex;gap:4px;align-items:center;margin:4px 0;font-size:13px">
+    <select onchange="LIG[${i}].etape=this.value" style="flex:1.2;min-width:0;padding:5px 4px;font-size:13px">${PHASES.map(([k, n]) => `<option value="${k}" ${l.etape === k ? 'selected' : ''}>${n}</option>`).join('')}</select>
+    <select onchange="LIG[${i}].nom=this.value" style="flex:1;min-width:0;padding:5px 4px;font-size:13px"><option value="">— salarié —</option>${emps.map(s => `<option value="${s.nom}" ${l.nom === s.nom ? 'selected' : ''}>${NOMS(s.nom)}</option>`).join('')}</select>
+    <input type="number" min="0" step="0.5" placeholder="auto" style="width:58px;padding:5px 4px;font-size:13px" value="${l.heures || ''}" oninput="LIG[${i}].heures=parseFloat(this.value)||null;resume()">h
+    <button onclick="LIG.splice(${i},1);rendreLignes()" title="Supprimer la ligne" style="padding:4px 7px">✕</button></div>`).join('');
+  resume();
 }
-function appliquer(groupe, noms) { affecter(groupe, noms.map(nom => ({nom, heures: null}))); }
-async function affecter(groupe, repartition) { await post('/api/affectation', {groupe, repartition}); $('panel').style.display = 'none'; rechargerGantt(); }
+function ajouterLigne() { LIG.push({etape: LIG.length ? LIG[LIG.length - 1].etape : 'toute', nom: '', heures: null}); rendreLignes(); }
+function resume() {
+  const tot = parseFloat($('totH').textContent.replace(',', '.').replace(/\s/g, '')) || 0, fix = LIG.reduce((s, l) => s + (l.nom && l.heures ? l.heures : 0), 0);
+  $('resume').innerHTML = `Heures saisies : <b>${hh(fix) || 0} h</b> sur ${hh(tot)} h${fix > tot ? ' <span class="retard">⚠️ plus que le total de la commande</span>' : ' · reste réparti sur les lignes « auto »'}`;
+}
+function enregistrer() { affecter(LIG_G, LIG.filter(l => l.nom)); }
+function appliquer(groupe, noms) { affecter(groupe, noms.map(nom => ({etape: 'toute', nom, heures: null}))); }
+async function affecter(groupe, lignes) { await post('/api/affectation', {groupe, lignes}); $('panel').style.display = 'none'; rechargerGantt(); }
 
 /* ---------------------------------------------------------------- Rappels */
 function vueRapp() {
@@ -309,7 +328,7 @@ function imprimer(titre, html) {
 }
 function tableListe() {
   const lignes = G.pretes.map((t, i) => `<tr><td>${i + 1}</td><td><b>${t.client || ''}</b></td><td>${t.vk || ''}</td><td>${t.designation || ''}</td><td class="n">${hh(t.heures_total)}</td><td>${fmt(t.delai)}</td><td>${fmt(t.debut) || '—'}</td>
-      <td>${t.affectee ? t.affectees.map(p => NOMS(p.nom) + (t.affectees.length > 1 ? ' (' + hh(p.heures) + ' h)' : '')).join(', ') : '—'}</td><td>${fmt(t.fin_commande)}${t.retard ? ' ⚠' : ''}</td>
+      <td>${affTxt(t).replace(/📌 /, '').replace(/ → /g, '<br>→ ')}</td><td>${fmt(t.fin_commande)}${t.retard ? ' ⚠' : ''}</td>
       <td>${LIB[t.statut]}</td><td>${ETAPES.map(([k, l]) => (t.etapes[k] ? '☑ ' : '☐ ') + l).join('<br>')}</td></tr>`).join('');
   return `<table><thead><tr><th>#</th><th>Client</th><th>N° VK</th><th>Désignation</th><th class="n">Heures</th><th>Délai</th><th>Début</th><th>Salarié(s)</th><th>Fin prévue</th><th>Statut</th><th>Étapes</th></tr></thead><tbody>${lignes}</tbody></table>`;
 }
