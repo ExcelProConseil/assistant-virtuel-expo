@@ -50,7 +50,7 @@ def lire(chemin):
             h_tot = num(val(ws, "R", r))
             if h_unit is not None and h_unit > 200:          # colonne décalée dans l'Excel : on ignore
                 h_unit = h_tot = None
-            if h_tot is None and h_unit is not None:
+            if (h_tot is None or h_tot == 0) and h_unit is not None:      # R = P x H ; si R n'est pas à jour on recalcule
                 h_tot = h_unit * qte
             ca_total = num(val(ws, "T", r))
             if ca_total is None and ca_unit is not None:
@@ -66,6 +66,7 @@ def lire(chemin):
                 depart=val(ws, "O", r), h_unit=h_unit, h_reelles=num(val(ws, "Q", r)), h_tot=h_tot,
                 ca_unit=ca_unit, ca_total=ca_total, couleur=couleur(ws, f"K{r}"),
                 principale=1 if val(ws, "D", r) else 0,
+                et_u=int(couleur(ws, f"L{r}") in VERT), et_a=int(couleur(ws, f"M{r}") in VERT), et_c=int(couleur(ws, f"N{r}") in VERT),
                 livree=1 if couleur(ws, f"K{r}") in VERT else 0))
     return lignes
 
@@ -113,13 +114,13 @@ def lire_salaries(chemin, annee=2026):
 
 PLANNING = os.environ.get("JPV_PLANNING", r"C:/Users/cmore/OneDrive/Bureau/commandes clt/Systeme/Claude outputs/2026 PLANNING COMMANDE.xlsx")
 
-def reimporter_si_modifie(con):
+def reimporter_si_modifie(con, force=False):
     """Relit le planning dès que JPV-AGENT (ou toi) l'a enregistré. Retourne True si relu."""
     if not os.path.exists(PLANNING):
         return False
     m = str(os.path.getmtime(PLANNING))
     r = con.execute("SELECT valeur FROM meta WHERE cle='planning_mtime'").fetchone()
-    if r and r[0] == m:
+    if r and r[0] == m and not force:
         return False
     try:                                       # on lit une copie : marche même si Excel est ouvert
         tmp = pathlib.Path(tempfile.mkdtemp()) / "planning.xlsx"
@@ -130,6 +131,7 @@ def reimporter_si_modifie(con):
     remplacer_lignes_excel(con, lire(tmp))
     remplacer_salaries(con, *lire_salaries(tmp))
     con.execute("INSERT OR REPLACE INTO meta VALUES ('planning_mtime', ?)", (m,))
+    con.execute("INSERT OR REPLACE INTO meta VALUES ('planning_lu', ?)", (dt.datetime.now().isoformat(timespec='seconds'),))
     con.commit()
     return True
 

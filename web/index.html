@@ -70,6 +70,21 @@ tfoot td{font-weight:700;position:sticky;bottom:0;background:var(--card);border-
 .panel h3{margin:0 0 6px;font-size:15px}.panel p{margin:4px 0}.panel .x{position:absolute;right:10px;top:8px;border:0;background:none;font-size:18px}
 .chk{display:flex;gap:12px;flex-wrap:wrap;font-size:13px}
 .chk label{display:flex;gap:5px;align-items:center;cursor:pointer}
+button.et{width:24px;height:24px;padding:0;border-radius:50%;font-size:11px;font-weight:700;color:var(--mut);margin-right:3px}
+button.et.fait{background:#1f9d55;border-color:#1f9d55;color:#fff}
+.rap{display:flex;gap:10px;align-items:flex-start;background:var(--card);border:1px solid var(--line);border-left:6px solid var(--warn);border-radius:10px;padding:9px 14px;margin-bottom:6px}
+.rap.rouge{border-left-color:var(--ko)}.rap .ic{font-size:16px}
+.badgeN{background:var(--ko);color:#fff;border-radius:99px;padding:0 7px;font-size:12px;margin-left:4px}
+#print{display:none}
+@media print{
+  @page{size:A4 landscape;margin:9mm}
+  *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  body.impr header, body.impr main, body.impr .panel{display:none!important}
+  body.impr #print{display:block}
+  body.impr{background:#fff;color:#000}
+  #print h2{margin:0 0 2px;font-size:16px}#print table{font-size:10px}#print th,#print td{padding:3px 5px}
+  #print .gwrap{overflow:visible;border:0}
+}
 @media(max-width:700px){.head{grid-template-columns:30px 1fr 90px}.head>:nth-child(4),.head>:nth-child(5){display:none}}
 </style>
 </head>
@@ -82,10 +97,12 @@ tfoot td{font-weight:700;position:sticky;bottom:0;background:var(--card);border-
 <main>
   <div id="note"></div>
   <div id="vue"></div>
+  <div id="lu" class="sub" style="margin-top:14px"></div>
 </main>
+<div id="print"></div>
 <div class="panel" id="panel"></div>
 <script>
-let CMD = [], MOIS = [], stockOk = false, erreurPlan = null, onglet = 'prio', filtre = 'complet', mois = null, G = null;
+let RAPP = [], planningLu = null, CMD = [], MOIS = [], stockOk = false, erreurPlan = null, onglet = 'prio', filtre = 'complet', mois = null, G = null;
 let gDebut = lundi(new Date()), gJours = 56;
 const $ = id => document.getElementById(id);
 const fmt = d => d ? d.split('-').reverse().join('/') : '';
@@ -101,12 +118,18 @@ const LIB = Object.fromEntries(STATUTS);
 const INDIC = {ok: '💡 stock complet', partiel: '💡 stock partiel', inconnu: '💡 stock inconnu'};
 // menu de statut : c'est TOI qui décides, rien ne change tout seul
 const selStatut = c => `<select class="st ${c.statut}" onclick="event.stopPropagation()" onchange="majStatut('${c.groupe}',this.value)">${STATUTS.map(([k, l]) => `<option value="${k}" ${c.statut === k ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
+const ETAPES = [['usinage', 'Usinage / Prépa fil', 'U'], ['acompte', 'Acompte', 'A'], ['controle', 'Contrôle / Emballage', 'C']];
+const chips = c => ETAPES.map(([k, l, i]) => `<button class="et ${c.etapes[k] ? 'fait' : ''}" title="${l} : ${c.etapes[k] ? 'fait' : 'à faire'} (clique pour changer)" onclick="event.stopPropagation();majEtape('${c.groupe}','${k}',${!c.etapes[k]})">${i}</button>`).join('');
+const etTxt = c => ETAPES.map(([k, l, i]) => i + (c.etapes[k] ? '✓' : '·')).join(' ');
+async function majEtape(groupe, etape, fait) { await post('/api/etape', {groupe, etape, fait}); if (onglet === 'gantt') { await rechargerGantt(); charger(); } else charger(); }
+async function relire() { $('lu').textContent = 'Relecture de l\'Excel…'; const r = await (await fetch('/api/relire', {method: 'POST', body: '{}'})).json(); if (!r.ok) alert('Impossible de relire l\'Excel : ' + r.erreur); charger(); }
 async function majDebut(groupe, jour) { await post('/api/demarrage', {groupe, jour: jour || null}); rechargerGantt(); }
 async function majStatut(groupe, v) { await post('/api/statut', {groupe, statut: v === 'attente' ? null : v}); charger(); }
 
 async function charger() {
   const r = await (await fetch('/api/commandes')).json();
-  CMD = r.commandes; MOIS = r.mois; stockOk = r.stock_charge; erreurPlan = r.erreur;
+  CMD = r.commandes; MOIS = r.mois; stockOk = r.stock_charge; erreurPlan = r.erreur; planningLu = r.planning_lu;
+  try { RAPP = (await (await fetch('/api/rappels')).json()).rappels; notifier(); } catch (e) { RAPP = []; }
   if (!mois) mois = (CMD.find(c => !c.livree) || {mois: MOIS[0]}).mois;
   if (onglet === 'gantt') await chargerGantt();
   afficher();
@@ -116,11 +139,12 @@ async function chargerGantt() {
 }
 
 function afficher() {
-  $('nav').innerHTML = [['prio', 'Prioritaires'], ['plan', 'Planning'], ['gantt', 'Gantt salariés']].map(([k, l]) =>
-    `<button class="${onglet === k ? 'on' : ''}" onclick="choisir('${k}')">${l}</button>`).join('');
+  $('nav').innerHTML = [['prio', 'Prioritaires'], ['plan', 'Planning'], ['gantt', 'Gantt salariés'], ['rapp', '🔔 Rappels']].map(([k, l]) =>
+    `<button class="${onglet === k ? 'on' : ''}" onclick="choisir('${k}')">${l}${k === 'rapp' && RAPP.length ? '<span class="badgeN">' + RAPP.filter(x => x.niveau === 'rouge').length + '</span>' : ''}</button>`).join('');
+  $('lu').innerHTML = (planningLu ? 'Planning Excel relu le ' + fmt(planningLu.slice(0, 10)) + ' à ' + planningLu.slice(11, 16) + ' · ' : '') + '<button onclick="relire()">↻ Relire l\'Excel maintenant</button>';
   $('note').innerHTML = (erreurPlan ? `<div class="note">⚠️ ${erreurPlan}</div>` : '') + (CMD.length === 0 && !erreurPlan ? '<div class="note">Aucune commande : le planning Excel n\'a pas encore été lu.</div>' : '') + (stockOk ? '' :
     '<div class="note">⚠️ JPV Stock est introuvable : aucune commande ne peut être déclarée complète. Vérifie que le dossier C:\\Users\\cmore\\JPV_STOCK existe.</div>');
-  ({prio: vuePrio, plan: vuePlan, gantt: vueGantt})[onglet]();
+  ({prio: vuePrio, plan: vuePlan, gantt: vueGantt, rapp: vueRapp})[onglet]();
 }
 async function choisir(k) { onglet = k; if (k === 'gantt') await chargerGantt(); afficher(); }
 
@@ -138,7 +162,7 @@ function vuePrio() {
     <div class="kpi"><b>${nb('livree')}</b><span>Livrées</span></div></div>
     <div class="bar">${[['complet', 'Complet'], ['fabrication', 'En fabrication'], ['controle', 'Au contrôle'], ['attente', 'En attente'], ['toutes', 'Toutes (à livrer)'], ['livree', 'Livrées']].map(([k, l]) =>
       `<button class="${filtre === k ? 'on' : ''}" onclick="filtre='${k}';afficher()">${l}</button>`).join('')}
-      <span class="sub">Tu choisis le statut de chaque commande avec le menu à droite. JPV Stock donne seulement une indication 💡.</span></div>`;
+      <button onclick="imprimerListe()">📄 PDF liste de fabrication</button> <span class="sub">Tu choisis le statut de chaque commande avec le menu à droite. JPV Stock donne seulement une indication 💡.</span></div>`;
   const liste = CMD.filter(c => (filtre === 'toutes' ? !c.livree : c.statut === filtre) && recherche(c));
   // Livrées : les plus récentes en haut (date de livraison, sinon mois de l'onglet)
   if (filtre === 'livree') liste.sort((a, b) => (b.delai || '').localeCompare(a.delai || '') || MOIS.indexOf(b.mois) - MOIS.indexOf(a.mois) || b.groupe.localeCompare(a.groupe, undefined, {numeric: true}));
@@ -150,7 +174,7 @@ function vuePrio() {
       <div><div class="client">${c.client || '—'} <span class="sub">VK ${c.vk || ''}</span></div><div class="sub">${c.designation || ''} · ${c.lignes.length} ligne(s) · ${c.mois} · ${eur(c.ca)}</div></div>
       <div class="${cls}">${fmt(c.delai) || '—'}<div class="sub ${cls}">${delai}</div></div>
       <div>${c.heures ? hh(c.heures) + ' h' : '<span class="sub">— h</span>'}</div>
-      <div class="ind ${c.stock}">${INDIC[c.stock]}</div>
+      <div><div class="ind ${c.stock}">${INDIC[c.stock]}</div><div style="margin-top:3px">${chips(c)}</div></div>
       ${selStatut(c)}</div>
       <div class="det"><table><tr><th>VK</th><th>Nomenclature</th><th>Désignation</th><th class="n">Qté</th><th>JPV Stock</th></tr>
       ${c.lignes.map(l => `<tr><td>${l.vk}</td><td>${l.nomenc}</td><td>${l.designation || ''}</td><td class="n">${l.qte}</td><td><span class="pt ${l.statut}"></span>${STAT[l.statut]}</td></tr>`).join('')}
@@ -169,7 +193,7 @@ function vuePlan() {
    <div class="kpis"><div class="kpi"><b>${du.length}</b><span>commandes</span></div><div class="kpi"><b>${ouv.length}</b><span>à livrer</span></div>
    <div class="kpi"><b>${hh(totH)} h</b><span>heures du mois</span></div><div class="kpi"><b>${eur(totCA)}</b><span>CA du mois</span></div></div>
    <div class="wrap"><table><thead><tr><th></th><th>Type</th><th>Récep. cde</th><th>AR</th><th>Client</th><th>VK</th><th>CDE</th><th>Nomenc.</th><th class="n">Qté</th>
-   <th>Délai</th><th>Rec. prod</th><th>Désignation</th><th>Étape prod.</th><th class="n">H. unit.</th><th class="n">H. tot.</th><th class="n">C.A.</th><th class="n">C.A. total</th><th>JPV Stock</th><th>Statut</th></tr></thead><tbody>`;
+   <th>Délai</th><th>Rec. prod</th><th>Désignation</th><th>Étape prod.</th><th class="n">H. unit.</th><th class="n">H. tot.</th><th class="n">C.A.</th><th class="n">C.A. total</th><th>JPV Stock</th><th>Étapes</th><th>Statut</th></tr></thead><tbody>`;
   h += lignes.map(({l, c, i}) => {
     const retard = !c.livree && l.delai && l.delai < iso(new Date());
     return `<tr class="${i === 0 ? 'g1' : 'opt'} ${c.livree ? 'fait' : ''}">
@@ -179,9 +203,9 @@ function vuePlan() {
       <td class="n">${l.qte}</td><td class="${retard ? 'retard' : ''}">${fmt(l.delai)}</td><td>${fmt(l.rec_prod) || l.rec_prod || ''}</td>
       <td class="d">${l.designation || ''}</td><td>${l.etape || ''}</td><td class="n">${hh(l.h_unit)}</td><td class="n">${hh(l.h_tot)}</td>
       <td class="n">${l.ca_unit ? l.ca_unit.toLocaleString('fr-FR') : ''}</td><td class="n">${l.ca_total ? l.ca_total.toLocaleString('fr-FR', {maximumFractionDigits: 0}) : ''}</td>
-      <td><span class="pt ${l.statut}"></span>${l.statut === 'livree' ? '✓' : STAT[l.statut]}</td><td>${i === 0 ? selStatut(c) : ''}</td></tr>`;
+      <td><span class="pt ${l.statut}"></span>${l.statut === 'livree' ? '✓' : STAT[l.statut]}</td><td>${i === 0 ? chips(c) : ''}</td><td>${i === 0 ? selStatut(c) : ''}</td></tr>`;
   }).join('');
-  h += `</tbody><tfoot><tr><td colspan="14">Total ${mois}</td><td class="n">${hh(totH)}</td><td></td><td class="n">${eur(totCA)}</td><td></td><td></td></tr></tfoot></table></div>`;
+  h += `</tbody><tfoot><tr><td colspan="14">Total ${mois}</td><td class="n">${hh(totH)}</td><td></td><td class="n">${eur(totCA)}</td><td></td><td></td><td></td></tr></tfoot></table></div>`;
   $('vue').innerHTML = h;
 }
 
@@ -190,7 +214,7 @@ function vueGantt() {
   if (!G) { $('vue').innerHTML = '<p class="sub">Chargement…</p>'; return; }
   const W = gJours <= 28 ? 40 : gJours <= 56 ? 26 : 16, n = G.jours.length, deb = iso(gDebut), fin = G.jours[n - 1].date;
   const emps = G.salaries.filter(s => s.actif).map(s => s.nom);
-  let h = `<div class="bar"><button onclick="decaler(-14)">◀</button><button onclick="gDebut=lundi(new Date());rechargerGantt()">Aujourd'hui</button><button onclick="decaler(14)">▶</button>
+  let h = `<div class="bar"><button onclick="imprimerGantt()">📄 PDF Gantt</button><button onclick="decaler(-14)">◀</button><button onclick="gDebut=lundi(new Date());rechargerGantt()">Aujourd'hui</button><button onclick="decaler(14)">▶</button>
     <select onchange="gJours=+this.value;rechargerGantt()">${[[28, '4 semaines'], [56, '8 semaines'], [91, '13 semaines'], [182, '6 mois']].map(([v, l]) => `<option value="${v}" ${gJours == v ? 'selected' : ''}>${l}</option>`).join('')}</select>
     <span class="sub">Les commandes au statut <b>Complet, En fabrication ou Au contrôle</b> peuvent être affectées : <b>c'est toi qui choisis</b> (tableau en dessous). 8,5 h/jour du lundi au jeudi, 5 h le vendredi.</span></div>
     <div class="chk" style="margin-bottom:10px"><b>Salariés inclus :</b>${G.salaries.map(s => `<label><input type="checkbox" ${s.actif ? 'checked' : ''} onchange="inclure('${s.nom.replace(/'/g, "\\'")}',this.checked)">${NOMS(s.nom)}</label>`).join('')}</div>`;
@@ -209,25 +233,25 @@ function vueGantt() {
     const bars = ts.map((t, i) => {
       const a = Math.max(0, Math.round((dd(t.debut < deb ? deb : t.debut) - dd(deb)) / 864e5)), b = Math.min(n - 1, Math.round((dd(t.fin) - dd(deb)) / 864e5));
       const tip = `${t.client} VK ${t.vk || ''} ${t.designation || ''} · ${hh(t.heures)} h · ${fmt(t.debut)} → ${fmt(t.fin)}${t.delai ? ' · délai ' + fmt(t.delai) : ''}${t.retard ? ' · EN RETARD' : ''}`;
-      return `<div class="task ${t.statut} ${t.retard ? 'retard' : ''} ${t.manuel ? 'manuel' : ''}" style="left:${a * W + 1}px;width:${(b - a + 1) * W - 2}px;top:${place[i] * 26 + 4}px" title="${tip}" onclick="detail('${t.groupe}')">${t.client} · ${hh(t.heures)} h</div>`;
+      return `<div class="task ${t.statut} ${t.retard ? 'retard' : ''} ${t.manuel ? 'manuel' : ''}" style="left:${a * W + 1}px;width:${(b - a + 1) * W - 2}px;top:${place[i] * 26 + 4}px" title="${tip}" onclick="detail('${t.groupe}')">${t.client} · ${hh(t.heures)} h · ${etTxt(t)}</div>`;
     }).join('');
     h += `<div class="gr"><div class="gn" style="height:${hLigne}px">${NOMS(nom)}<span class="sub">${hh(G.charge[nom]) || 0} h planifiées</span></div><div class="gdays" style="position:relative">${cells}${bars}</div></div>`;
   });
   h += `</div></div><div class="legend"><span><i style="background:var(--ok)"></i>Complet</span><span><i style="background:#e08a00"></i>En fabrication</span><span><i style="background:#7a4fd6"></i>Au contrôle</span><span><i style="border:2px solid var(--ko)"></i>fini après le délai</span><span><i style="background:var(--cp)"></i>congé payé</span><span><i style="background:var(--abs)"></i>absence</span><span><i style="background:var(--fer)"></i>férié</span><span>📌 salarié choisi à la main</span></div>`;
   const nbA = G.pretes.filter(x => !x.affectee).length;
   h += `<h3 style="margin:18px 0 8px">Affectation des commandes <span class="sub">(${nbA} à affecter sur ${G.pretes.length} · clique sur « Affecter » pour choisir qui travaille dessus)</span></h3><div class="wrap"><table>
-    <thead><tr><th>Priorité</th><th>Client</th><th>N° VK</th><th>Désignation</th><th class="n">Heures</th><th>Délai</th><th>Début</th><th>Salarié(s)</th><th>Fin prévue</th><th>Statut</th><th></th></tr></thead><tbody>${G.pretes.map((t, i) => `<tr>
+    <thead><tr><th>Priorité</th><th>Client</th><th>N° VK</th><th>Désignation</th><th class="n">Heures</th><th>Délai</th><th>Début</th><th>Salarié(s)</th><th>Fin prévue</th><th>Étapes</th><th>Statut</th><th></th></tr></thead><tbody>${G.pretes.map((t, i) => `<tr>
       <td>${i + 1}</td><td><b>${t.client || ''}</b></td><td>${t.vk || ''}</td><td>${t.designation || ''}</td><td class="n">${hh(t.heures_total)}</td><td>${fmt(t.delai)}</td>
       <td><input type="date" value="${t.debut || ''}" title="Date de démarrage (vide = aujourd'hui)" onchange="majDebut('${t.groupe}',this.value)" style="width:128px"></td>
       <td>${t.affectee ? '📌 ' + t.affectees.map(p => NOMS(p.nom) + (t.affectees.length > 1 ? ' (' + hh(p.heures) + ' h)' : '')).join(', ') : '<span class="sub">— à affecter —</span>'}</td>
       <td class="${t.retard ? 'retard' : ''}">${t.fin_commande ? fmt(t.fin_commande) + (t.retard ? ' ⚠️' : '') : ''}</td>
-      <td>${selStatut(t)}</td><td><button class="${t.affectee ? '' : 'on'}" onclick="detail('${t.groupe}')">${t.affectee ? 'Modifier' : 'Affecter'}</button></td></tr>`).join('') || '<tr><td colspan="11" class="sub">Aucune commande au statut Complet, En fabrication ou Au contrôle. Change le statut dans l onglet Prioritaires.</td></tr>'}</tbody></table></div>`;
+      <td>${chips(t)}</td><td>${selStatut(t)}</td><td><button class="${t.affectee ? '' : 'on'}" onclick="detail('${t.groupe}')">${t.affectee ? 'Modifier' : 'Affecter'}</button></td></tr>`).join('') || '<tr><td colspan="12" class="sub">Aucune commande au statut Complet, En fabrication ou Au contrôle. Change le statut dans l onglet Prioritaires.</td></tr>'}</tbody></table></div>`;
   if (G.en_attente.length) h += `<h3 style="margin:18px 0 8px">En attente <span class="sub">(${G.en_attente.length} commande(s) sans statut : passe-les en « Complet » pour pouvoir les affecter)</span></h3><div class="wrap"><table>
     <thead><tr><th>Client</th><th>N° VK</th><th>Désignation</th><th class="n">Heures</th><th>Délai</th><th>Indication JPV Stock</th><th>Statut</th></tr></thead><tbody>${G.en_attente.map(c => `<tr><td><b>${c.client || ''}</b></td><td>${c.vk || ''}</td><td>${c.designation || ''}</td><td class="n">${hh(c.heures) || '—'}</td><td>${fmt(c.delai)}</td><td class="ind ${c.stock}">${INDIC[c.stock]}${c.pre_affectee ? ' · 📌 salarié déjà choisi' : ''}</td><td>${selStatut(Object.assign({}, c, {statut: 'attente'}))}</td></tr>`).join('')}</tbody></table></div>`;
   if (G.sans_heures.length) h += `<div class="note"><b>${G.sans_heures.length} commande(s) sans heures dans l'Excel</b> (complètes mais non affectables) : ${G.sans_heures.map(s => s.client + ' ' + (s.vk || '') + (s.designation ? ' ' + s.designation : '')).join(' · ')}</div>`;
   $('vue').innerHTML = h;
 }
-async function rechargerGantt() { await chargerGantt(); afficher(); }
+async function rechargerGantt() { await chargerGantt(); try { RAPP = (await (await fetch('/api/rappels')).json()).rappels; } catch (e) {} afficher(); }
 function decaler(j) { gDebut.setDate(gDebut.getDate() + j); rechargerGantt(); }
 async function inclure(nom, actif) { await post('/api/employe', {nom, actif}); rechargerGantt(); }
 function detail(groupe) {
@@ -241,6 +265,7 @@ function detail(groupe) {
     <p>${hh(p.heures_total)} h au total · statut : <b>${LIB[p.statut]}</b> · <span class="ind ${p.stock}">${INDIC[p.stock]}</span></p>
     <p>Délai client : <b class="${p.retard ? 'retard' : ''}">${fmt(p.delai) || '—'}</b>${p.fin_commande ? ' · fin prévue : <b class="' + (p.retard ? 'retard' : '') + '">' + fmt(p.fin_commande) + '</b>' + (p.retard ? ' ⚠️ en retard' : '') : ''}</p>
     <p>Début : <input type="date" value="${p.debut || ''}" onchange="majDebut('${groupe}',this.value)"> <span class="sub">(vide = aujourd'hui · mets une date passée si c'est déjà commencé)</span></p>
+    <p>Étapes : ${chips(p)} <span class="sub">U usinage/prépa fil · A acompte · C contrôle/emballage</span></p>
     <p><b>Qui travaille dessus ?</b> <span class="sub">(coche, et indique les heures de chacun, ou laisse vide pour répartir à parts égales)</span></p>
     <div id="aff">${G.salaries.filter(s => s.actif).map(s => `<div style="display:flex;gap:6px;align-items:center;margin:3px 0"><label style="flex:1"><input type="checkbox" value="${s.nom}" ${manuel && mine[s.nom] ? 'checked' : ''}> ${NOMS(s.nom)}</label>
       <input type="number" min="0" step="0.5" placeholder="auto" style="width:70px" data-h="${s.nom}" value="${manuel && mine[s.nom] && mine[s.nom].fixe ? mine[s.nom].heures : ''}"> h</div>`).join('')}</div>
@@ -256,6 +281,47 @@ function enregistrer(groupe) {
 }
 function appliquer(groupe, noms) { affecter(groupe, noms.map(nom => ({nom, heures: null}))); }
 async function affecter(groupe, repartition) { await post('/api/affectation', {groupe, repartition}); $('panel').style.display = 'none'; rechargerGantt(); }
+
+/* ---------------------------------------------------------------- Rappels */
+function vueRapp() {
+  const rouge = RAPP.filter(r => r.niveau === 'rouge'), orange = RAPP.filter(r => r.niveau === 'orange');
+  const ligne = r => `<div class="rap ${r.niveau}"><span class="ic">${r.niveau === 'rouge' ? '🔴' : '🟠'}</span><div>${r.texte}</div></div>`;
+  $('vue').innerHTML = `<div class="bar"><button class="on" onclick="activerNotif()">🔔 Activer les notifications Windows</button>
+    <span class="sub">${'Notification' in window ? 'État : ' + ({granted: 'activées', denied: 'refusées par le navigateur', default: 'pas encore activées'})[Notification.permission] : 'non disponibles'} · les rappels se mettent à jour toutes les minutes tant que la page est ouverte.</span></div>
+    <h3 style="margin:8px 0">🔴 À traiter (${rouge.length})</h3>${rouge.map(ligne).join('') || '<p class="sub">Rien d\'urgent.</p>'}
+    <h3 style="margin:14px 0 8px">🟠 À surveiller (${orange.length})</h3>${orange.map(ligne).join('') || '<p class="sub">Rien à signaler.</p>'}`;
+}
+function activerNotif() { if (!('Notification' in window)) return alert('Notifications non disponibles dans ce navigateur.'); Notification.requestPermission().then(() => afficher()); }
+function notifier() {   // une notification Windows pour chaque NOUVEAU rappel rouge
+  try {
+    const vus = JSON.parse(localStorage.getItem('rappels_vus') || '[]'), neufs = RAPP.filter(r => r.niveau === 'rouge' && !vus.includes(r.cle));
+    if (neufs.length && 'Notification' in window && Notification.permission === 'granted')
+      neufs.slice(0, 3).forEach(r => new Notification('JPV Commandes', {body: r.texte.replace(/ \(statut.*$/, '')}));
+    localStorage.setItem('rappels_vus', JSON.stringify(RAPP.filter(r => r.niveau === 'rouge').map(r => r.cle)));
+  } catch (e) {}
+}
+
+/* ---------------------------------------------------------------- PDF (impression « Enregistrer au format PDF ») */
+window.onafterprint = () => document.body.classList.remove('impr');
+function imprimer(titre, html) {
+  $('print').innerHTML = `<h2>${titre}</h2><div class="sub" style="margin-bottom:6px">Édité le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR', {hour: '2-digit', minute: '2-digit'})}</div>` + html;
+  document.body.classList.add('impr'); setTimeout(() => window.print(), 100);
+}
+function tableListe() {
+  const lignes = G.pretes.map((t, i) => `<tr><td>${i + 1}</td><td><b>${t.client || ''}</b></td><td>${t.vk || ''}</td><td>${t.designation || ''}</td><td class="n">${hh(t.heures_total)}</td><td>${fmt(t.delai)}</td><td>${fmt(t.debut) || '—'}</td>
+      <td>${t.affectee ? t.affectees.map(p => NOMS(p.nom) + (t.affectees.length > 1 ? ' (' + hh(p.heures) + ' h)' : '')).join(', ') : '—'}</td><td>${fmt(t.fin_commande)}${t.retard ? ' ⚠' : ''}</td>
+      <td>${LIB[t.statut]}</td><td>${ETAPES.map(([k, l]) => (t.etapes[k] ? '☑ ' : '☐ ') + l).join('<br>')}</td></tr>`).join('');
+  return `<table><thead><tr><th>#</th><th>Client</th><th>N° VK</th><th>Désignation</th><th class="n">Heures</th><th>Délai</th><th>Début</th><th>Salarié(s)</th><th>Fin prévue</th><th>Statut</th><th>Étapes</th></tr></thead><tbody>${lignes}</tbody></table>`;
+}
+async function imprimerListe() {
+  await chargerGantt();
+  imprimer('Liste de fabrication — commandes Complet / En fabrication / Au contrôle', tableListe());
+}
+async function imprimerGantt() {
+  await chargerGantt(); afficher();
+  const g = document.querySelector('.gwrap'); if (!g) return;
+  imprimer(`Gantt salariés — du ${fmt(iso(gDebut))} au ${fmt(G.jours[G.jours.length - 1].date)}`, `<div style="zoom:0.6">${g.outerHTML}</div><div style="margin-top:8px">${tableListe()}</div>`);
+}
 
 const post = (u, d) => fetch(u, {method: 'POST', body: JSON.stringify(d)});
 $('q').oninput = afficher;

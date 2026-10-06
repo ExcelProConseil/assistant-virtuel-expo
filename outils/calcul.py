@@ -13,6 +13,7 @@ def _date(s):
     except (TypeError, ValueError): return None
 
 STATUTS = ("complet", "fabrication", "controle", "livree")      # + "attente" quand rien n'est choisi
+ETAPES = (("usinage", "Usinage / Prépa fil", "U"), ("acompte", "Acompte", "A"), ("controle", "Contrôle / Emballage", "C"))
 A_PLANIFIER = ("complet", "fabrication", "controle")             # commandes affectables à un salarié
 
 def commandes(con, aujourdhui=None):
@@ -22,6 +23,9 @@ def commandes(con, aujourdhui=None):
     auj = aujourdhui or dt.date.today()
     stock = {r["vk"]: r["statut"] for r in con.execute("SELECT vk, statut FROM statut_stock")}
     choix = {r["groupe"]: r["statut"] for r in con.execute("SELECT groupe, statut FROM statuts")}
+    coches = {}
+    for r in con.execute("SELECT groupe, etape, fait FROM etapes"):
+        coches.setdefault(r["groupe"], {})[r["etape"]] = bool(r["fait"])
     groupes, ordre_mois = {}, {}
     for r in con.execute("SELECT * FROM lignes ORDER BY ordre, rowid"):
         groupes.setdefault(r["groupe"], []).append(dict(r))
@@ -37,12 +41,14 @@ def commandes(con, aujourdhui=None):
         indic = "ok" if not manque else ("partiel" if any(l["statut"] in ("ok", "livree") for l in lignes) else "inconnu")
         statut = choix.get(g) or ("livree" if all(l["livree"] for l in lignes) else "attente")
         d = min(delais) if delais else None
+        excel = dict(usinage=bool(p["et_u"]), acompte=bool(p["et_a"]), controle=bool(p["et_c"]))   # couleur verte dans l'Excel (ligne principale)
+        excel.update(coches.get(g, {}))                                                     # puis ce que tu as coché à la main
         cmds.append(dict(groupe=g, mois=p["mois"], client=p["client"], cde=p["cde"], type=p["type"],
                          vk=p["vk"], vks=[l["vk"] for l in lignes], designation=p["designation"],
                          delai=d.isoformat() if d else None,
                          ca=sum(l["ca_total"] or 0 for l in lignes),
                          heures=sum(l["h_tot"] or 0 for l in lignes),
-                         statut=statut, livree=statut == "livree", manuel=g in choix,
+                         statut=statut, livree=statut == "livree", manuel=g in choix, etapes=excel,
                          stock=indic, nb_manque=manque, lignes=lignes,
                          jours=(d - auj).days if d else None))
     cmds.sort(key=lambda c: (c["livree"], c["delai"] or "9999", c["groupe"]))
@@ -142,14 +148,14 @@ def gantt(con, cmds, debut, nb_jours, aujourdhui=None, horizon=400):
         fin_cmd = max(seg[-1][0] for _, _, seg in placees) if placees else None
         retard = bool(d and fin_cmd and fin_cmd > d)
         pretes.append(dict(groupe=c["groupe"], client=c["client"], cde=c["cde"], vk=c["vk"], designation=c["designation"],
-                           delai=c["delai"], heures_total=round(c["heures"], 2), affectee=bool(placees), statut=c["statut"], debut=depuis.isoformat() if c["groupe"] in demarrage and demarrage[c["groupe"]] else None, stock=c["stock"],
+                           delai=c["delai"], heures_total=round(c["heures"], 2), affectee=bool(placees), statut=c["statut"], etapes=c["etapes"], debut=depuis.isoformat() if c["groupe"] in demarrage and demarrage[c["groupe"]] else None, stock=c["stock"],
                            affectees=[dict(nom=n, heures=round(h, 2)) for n, h, _ in placees],
                            fin_commande=fin_cmd.isoformat() if fin_cmd else None, retard=retard))
         for n, h, seg in placees:
             taches.append(dict(groupe=c["groupe"], client=c["client"], cde=c["cde"], vk=c["vk"], designation=c["designation"],
                                employe=n, manuel=True, debut=seg[0][0].isoformat(), fin=seg[-1][0].isoformat(),
                                heures=round(h, 2), fixe=any(n == nm and hh_ for nm, hh_ in manuel.get(c["groupe"], [])),
-                               heures_total=round(c["heures"], 2), statut=c["statut"], delai=c["delai"],
+                               heures_total=round(c["heures"], 2), statut=c["statut"], etapes=c["etapes"], delai=c["delai"],
                                fin_commande=fin_cmd.isoformat(), retard=retard))
     jours = []
     for i in range(nb_jours):
@@ -163,3 +169,29 @@ def gantt(con, cmds, debut, nb_jours, aujourdhui=None, horizon=400):
     return dict(salaries=tous, jours=jours, etat=etat, taches=taches, options=options, pretes=pretes, en_attente=en_attente,
                 sans_heures=[dict(groupe=c["groupe"], client=c["client"], vk=c["vk"], designation=c["designation"], delai=c["delai"]) for c in sans_heures],
                 charge={n: round(sum(h for j, h in charge[n].items()), 1) for n in emps})
+
+
+# ------------------------------------------------------------------ rappels
+def rappels(cmds, g, aujourdhui=None, seuil_jours=3):
+    """Liste des alertes. niveau « rouge » = à traiter, « orange » = à surveiller."""
+    auj = aujourdhui or dt.date.today()
+    out = []
+    pretes = {p["groupe"]: p for p in g["pretes"]}
+    for c in cmds:
+        if c["statut"] not in A_PLANIFIER: continue
+        d = _date(c["delai"]); p = pretes.get(c["groupe"])
+        nom = f'{c["client"] or ""} {c["vk"] or ""}'.strip()
+        def ajoute(niveau, cle, texte):
+            out.append(dict(niveau=niveau, cle=f'{cle}:{c["groupe"]}', groupe=c["groupe"], client=c["client"], vk=c["vk"], texte=texte))
+        if d and d < auj and c["statut"] != "controle":
+            ajoute("rouge", "depasse", f"{nom} : délai {d.strftime('%d/%m/%Y')} dépassé de {(auj - d).days} j (statut : {dict(complet='Complet', fabrication='En fabrication')[c['statut']]})")
+        if p and p["affectee"] and p["retard"]:
+            ajoute("rouge", "retard", f"{nom} : fin prévue le {_date(p['fin_commande']).strftime('%d/%m/%Y')}, après le délai du {d.strftime('%d/%m/%Y')}")
+        if d and 0 <= (d - auj).days <= seuil_jours:
+            ajoute("orange", "proche", f"{nom} : délai dans {(d - auj).days} j ({d.strftime('%d/%m/%Y')})")
+        if c["heures"] > 0 and p and not p["affectee"]:
+            ajoute("orange", "affecter", f"{nom} : statut {dict(complet='Complet', fabrication='En fabrication', controle='Au contrôle')[c['statut']]} mais aucun salarié affecté")
+        if c["heures"] <= 0:
+            ajoute("orange", "heures", f"{nom} : pas d'heures renseignées dans l'Excel")
+    out.sort(key=lambda r: (r["niveau"] != "rouge", r["texte"]))
+    return out

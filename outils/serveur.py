@@ -10,10 +10,10 @@
 import json, pathlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from base import connecter, upsert_lignes
-from calcul import commandes, gantt
+from calcul import commandes, gantt, rappels
 import datetime as dt, urllib.parse
 from sync_stock import synchroniser
-from importer_excel import reimporter_si_modifie
+from importer_excel import reimporter_si_modifie, PLANNING
 
 WEB = pathlib.Path(__file__).resolve().parent.parent / "web"
 
@@ -35,7 +35,12 @@ class H(BaseHTTPRequestHandler):
             except Exception as e: print("Sync JPV Stock impossible :", e)
             n = con.execute("SELECT COUNT(*) FROM statut_stock").fetchone()[0]
             cmds, mois = commandes(con)
-            return self._send(200, {"stock_charge": n > 0, "erreur": erreur, "mois": mois, "commandes": cmds})
+            lu = con.execute("SELECT valeur FROM meta WHERE cle='planning_lu'").fetchone()
+            return self._send(200, {"stock_charge": n > 0, "erreur": erreur, "planning_lu": lu[0] if lu else None, "mois": mois, "commandes": cmds})
+        if self.path.startswith("/api/rappels"):
+            con = connecter(); cmds, _ = commandes(con)
+            g = gantt(con, cmds, dt.date.today(), 1)
+            return self._send(200, {"rappels": rappels(cmds, g)})
         if self.path.startswith("/api/gantt"):
             q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
             con = connecter()
@@ -71,6 +76,19 @@ class H(BaseHTTPRequestHandler):
                     con.execute("INSERT OR REPLACE INTO demarrages VALUES (?,?)", (d["groupe"], d["jour"]))
                 else:
                     con.execute("DELETE FROM demarrages WHERE groupe=?", (d["groupe"],))
+                con.commit(); return self._send(200, {"ok": True})
+            if self.path == "/api/relire":            # force la relecture de l'Excel maintenant
+                try:
+                    reimporter_si_modifie(con, force=True); return self._send(200, {"ok": True})
+                except Exception as e:
+                    return self._send(200, {"ok": False, "erreur": f"{type(e).__name__}: {e}"})
+            if self.path == "/api/etape":             # {groupe, etape: usinage|acompte|controle, fait: true|false|null}
+                d = json.loads(corps)
+                if d["etape"] not in ("usinage", "acompte", "controle"): raise ValueError("étape inconnue")
+                if d.get("fait") is None:
+                    con.execute("DELETE FROM etapes WHERE groupe=? AND etape=?", (d["groupe"], d["etape"]))
+                else:
+                    con.execute("INSERT OR REPLACE INTO etapes VALUES (?,?,?)", (d["groupe"], d["etape"], 1 if d["fait"] else 0))
                 con.commit(); return self._send(200, {"ok": True})
             if self.path == "/api/statut":           # {groupe, statut: complet|fabrication|controle|livree|null}
                 d = json.loads(corps)
