@@ -17,6 +17,7 @@ def connecter():
     CREATE TABLE IF NOT EXISTS lignes (vk TEXT PRIMARY KEY, source TEXT);
     CREATE TABLE IF NOT EXISTS statut_stock (vk TEXT PRIMARY KEY, statut TEXT, maj TEXT);
     CREATE TABLE IF NOT EXISTS statuts (groupe TEXT PRIMARY KEY, statut TEXT);   -- statut choisi à la main
+    CREATE TABLE IF NOT EXISTS demarrages (groupe TEXT PRIMARY KEY, jour TEXT);   -- date de début choisie à la main
     CREATE TABLE IF NOT EXISTS meta (cle TEXT PRIMARY KEY, valeur TEXT);
     CREATE TABLE IF NOT EXISTS employes (nom TEXT PRIMARY KEY, ordre INTEGER, actif INTEGER DEFAULT 1);
     CREATE TABLE IF NOT EXISTS absences (jour TEXT, nom TEXT, type TEXT, PRIMARY KEY (jour, nom));

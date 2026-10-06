@@ -77,6 +77,7 @@ def gantt(con, cmds, debut, nb_jours, aujourdhui=None, horizon=400):
         abs_[(r["jour"], r["nom"])] = r["type"]
     ferie = set()
     for a in {auj.year - 1, auj.year, auj.year + 1, auj.year + 2}: ferie |= feries(a)
+    demarrage = {r["groupe"]: _date(r["jour"]) for r in con.execute("SELECT groupe, jour FROM demarrages")}
     manuel = {}
     for r in con.execute("SELECT groupe, nom, heures FROM affectations"):
         manuel.setdefault(r["groupe"], []).append((r["nom"], r["heures"]))
@@ -105,8 +106,8 @@ def gantt(con, cmds, debut, nb_jours, aujourdhui=None, horizon=400):
         part = max(0.0, total - fixes) / len(libres) if libres else 0.0
         return [(n, h or part) for n, h in liste if (h or part) > 0]
 
-    def fin_de(n, h):
-        seg = placer(n, h, auj)
+    def fin_de(n, h, depuis):
+        seg = placer(n, h, depuis)
         return seg[-1][0] if seg else None
 
     # Seules les commandes COMPLÈTES (tout le matériel en stock) peuvent être affectées, et c'est TOI qui
@@ -122,10 +123,11 @@ def gantt(con, cmds, debut, nb_jours, aujourdhui=None, horizon=400):
                   for c in cmds if c["statut"] == "attente"]
     for c in a_faire:
         d = _date(c["delai"])
+        depuis = demarrage.get(c["groupe"]) or auj          # date de début choisie, sinon aujourd'hui
         # aide : combien de personnes pour tenir le délai ? (les n salariés qui finiraient le plus tôt)
         opts = []
         for k in range(1, min(4, len(emps)) + 1):
-            fins = sorted(((fin_de(n, c["heures"] / k), n) for n in emps), key=lambda x: (x[0] is None, x[0]))[:k]
+            fins = sorted(((fin_de(n, c["heures"] / k, depuis), n) for n in emps), key=lambda x: (x[0] is None, x[0]))[:k]
             if any(f is None for f, _ in fins): continue
             fin = max(f for f, _ in fins)
             opts.append(dict(n=k, fin=fin.isoformat(), noms=[n for _, n in fins], ok=bool(d is None or fin <= d)))
@@ -133,14 +135,14 @@ def gantt(con, cmds, debut, nb_jours, aujourdhui=None, horizon=400):
         parts = partager(c["heures"], manuel[c["groupe"]]) if c["groupe"] in manuel else []
         placees = []
         for n, h in parts:
-            seg = placer(n, h, auj)
+            seg = placer(n, h, depuis)
             if not seg: continue
             for j, hh in seg: charge[n][j] = charge[n].get(j, 0.0) + hh
             placees.append((n, h, seg))
         fin_cmd = max(seg[-1][0] for _, _, seg in placees) if placees else None
         retard = bool(d and fin_cmd and fin_cmd > d)
         pretes.append(dict(groupe=c["groupe"], client=c["client"], cde=c["cde"], vk=c["vk"], designation=c["designation"],
-                           delai=c["delai"], heures_total=round(c["heures"], 2), affectee=bool(placees), statut=c["statut"], stock=c["stock"],
+                           delai=c["delai"], heures_total=round(c["heures"], 2), affectee=bool(placees), statut=c["statut"], debut=depuis.isoformat() if c["groupe"] in demarrage and demarrage[c["groupe"]] else None, stock=c["stock"],
                            affectees=[dict(nom=n, heures=round(h, 2)) for n, h, _ in placees],
                            fin_commande=fin_cmd.isoformat() if fin_cmd else None, retard=retard))
         for n, h, seg in placees:

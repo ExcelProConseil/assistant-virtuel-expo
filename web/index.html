@@ -101,6 +101,7 @@ const LIB = Object.fromEntries(STATUTS);
 const INDIC = {ok: '💡 stock complet', partiel: '💡 stock partiel', inconnu: '💡 stock inconnu'};
 // menu de statut : c'est TOI qui décides, rien ne change tout seul
 const selStatut = c => `<select class="st ${c.statut}" onclick="event.stopPropagation()" onchange="majStatut('${c.groupe}',this.value)">${STATUTS.map(([k, l]) => `<option value="${k}" ${c.statut === k ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
+async function majDebut(groupe, jour) { await post('/api/demarrage', {groupe, jour: jour || null}); rechargerGantt(); }
 async function majStatut(groupe, v) { await post('/api/statut', {groupe, statut: v === 'attente' ? null : v}); charger(); }
 
 async function charger() {
@@ -215,11 +216,12 @@ function vueGantt() {
   h += `</div></div><div class="legend"><span><i style="background:var(--ok)"></i>Complet</span><span><i style="background:#e08a00"></i>En fabrication</span><span><i style="background:#7a4fd6"></i>Au contrôle</span><span><i style="border:2px solid var(--ko)"></i>fini après le délai</span><span><i style="background:var(--cp)"></i>congé payé</span><span><i style="background:var(--abs)"></i>absence</span><span><i style="background:var(--fer)"></i>férié</span><span>📌 salarié choisi à la main</span></div>`;
   const nbA = G.pretes.filter(x => !x.affectee).length;
   h += `<h3 style="margin:18px 0 8px">Affectation des commandes <span class="sub">(${nbA} à affecter sur ${G.pretes.length} · clique sur « Affecter » pour choisir qui travaille dessus)</span></h3><div class="wrap"><table>
-    <thead><tr><th>Priorité</th><th>Client</th><th>N° VK</th><th>Désignation</th><th class="n">Heures</th><th>Délai</th><th>Salarié(s)</th><th>Fin prévue</th><th>Statut</th><th></th></tr></thead><tbody>${G.pretes.map((t, i) => `<tr>
+    <thead><tr><th>Priorité</th><th>Client</th><th>N° VK</th><th>Désignation</th><th class="n">Heures</th><th>Délai</th><th>Début</th><th>Salarié(s)</th><th>Fin prévue</th><th>Statut</th><th></th></tr></thead><tbody>${G.pretes.map((t, i) => `<tr>
       <td>${i + 1}</td><td><b>${t.client || ''}</b></td><td>${t.vk || ''}</td><td>${t.designation || ''}</td><td class="n">${hh(t.heures_total)}</td><td>${fmt(t.delai)}</td>
+      <td><input type="date" value="${t.debut || ''}" title="Date de démarrage (vide = aujourd'hui)" onchange="majDebut('${t.groupe}',this.value)" style="width:128px"></td>
       <td>${t.affectee ? '📌 ' + t.affectees.map(p => NOMS(p.nom) + (t.affectees.length > 1 ? ' (' + hh(p.heures) + ' h)' : '')).join(', ') : '<span class="sub">— à affecter —</span>'}</td>
       <td class="${t.retard ? 'retard' : ''}">${t.fin_commande ? fmt(t.fin_commande) + (t.retard ? ' ⚠️' : '') : ''}</td>
-      <td>${selStatut(t)}</td><td><button class="${t.affectee ? '' : 'on'}" onclick="detail('${t.groupe}')">${t.affectee ? 'Modifier' : 'Affecter'}</button></td></tr>`).join('') || '<tr><td colspan="10" class="sub">Aucune commande au statut Complet, En fabrication ou Au contrôle. Change le statut dans l onglet Prioritaires.</td></tr>'}</tbody></table></div>`;
+      <td>${selStatut(t)}</td><td><button class="${t.affectee ? '' : 'on'}" onclick="detail('${t.groupe}')">${t.affectee ? 'Modifier' : 'Affecter'}</button></td></tr>`).join('') || '<tr><td colspan="11" class="sub">Aucune commande au statut Complet, En fabrication ou Au contrôle. Change le statut dans l onglet Prioritaires.</td></tr>'}</tbody></table></div>`;
   if (G.en_attente.length) h += `<h3 style="margin:18px 0 8px">En attente <span class="sub">(${G.en_attente.length} commande(s) sans statut : passe-les en « Complet » pour pouvoir les affecter)</span></h3><div class="wrap"><table>
     <thead><tr><th>Client</th><th>N° VK</th><th>Désignation</th><th class="n">Heures</th><th>Délai</th><th>Indication JPV Stock</th><th>Statut</th></tr></thead><tbody>${G.en_attente.map(c => `<tr><td><b>${c.client || ''}</b></td><td>${c.vk || ''}</td><td>${c.designation || ''}</td><td class="n">${hh(c.heures) || '—'}</td><td>${fmt(c.delai)}</td><td class="ind ${c.stock}">${INDIC[c.stock]}${c.pre_affectee ? ' · 📌 salarié déjà choisi' : ''}</td><td>${selStatut(Object.assign({}, c, {statut: 'attente'}))}</td></tr>`).join('')}</tbody></table></div>`;
   if (G.sans_heures.length) h += `<div class="note"><b>${G.sans_heures.length} commande(s) sans heures dans l'Excel</b> (complètes mais non affectables) : ${G.sans_heures.map(s => s.client + ' ' + (s.vk || '') + (s.designation ? ' ' + s.designation : '')).join(' · ')}</div>`;
@@ -238,6 +240,7 @@ function detail(groupe) {
     <h3>${c.client} <span class="sub">VK ${p.vk || ''}</span></h3><p class="sub">${p.designation || ''}</p>
     <p>${hh(p.heures_total)} h au total · statut : <b>${LIB[p.statut]}</b> · <span class="ind ${p.stock}">${INDIC[p.stock]}</span></p>
     <p>Délai client : <b class="${p.retard ? 'retard' : ''}">${fmt(p.delai) || '—'}</b>${p.fin_commande ? ' · fin prévue : <b class="' + (p.retard ? 'retard' : '') + '">' + fmt(p.fin_commande) + '</b>' + (p.retard ? ' ⚠️ en retard' : '') : ''}</p>
+    <p>Début : <input type="date" value="${p.debut || ''}" onchange="majDebut('${groupe}',this.value)"> <span class="sub">(vide = aujourd'hui · mets une date passée si c'est déjà commencé)</span></p>
     <p><b>Qui travaille dessus ?</b> <span class="sub">(coche, et indique les heures de chacun, ou laisse vide pour répartir à parts égales)</span></p>
     <div id="aff">${G.salaries.filter(s => s.actif).map(s => `<div style="display:flex;gap:6px;align-items:center;margin:3px 0"><label style="flex:1"><input type="checkbox" value="${s.nom}" ${manuel && mine[s.nom] ? 'checked' : ''}> ${NOMS(s.nom)}</label>
       <input type="number" min="0" step="0.5" placeholder="auto" style="width:70px" data-h="${s.nom}" value="${manuel && mine[s.nom] && mine[s.nom].fixe ? mine[s.nom].heures : ''}"> h</div>`).join('')}</div>

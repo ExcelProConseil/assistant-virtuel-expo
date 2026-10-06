@@ -4,6 +4,7 @@
   (le statut du stock est lu automatiquement dans JPV Stock, en lecture seule)
   GET  /api/gantt?debut=AAAA-MM-JJ&jours=56 -> planning des salariés
   POST /api/affectation / /api/employe -> choix du salarié d'une commande / salarié inclus ou non
+  POST /api/demarrage              -> {groupe, jour}  (date de début choisie à la main)
   POST /api/statut                 -> {groupe, statut: complet|fabrication|controle|livree|null}  (statut choisi à la main)
 """
 import json, pathlib
@@ -62,6 +63,14 @@ class H(BaseHTTPRequestHandler):
             if self.path == "/api/employe":
                 d = json.loads(corps)
                 con.execute("UPDATE employes SET actif=? WHERE nom=?", (1 if d["actif"] else 0, d["nom"]))
+                con.commit(); return self._send(200, {"ok": True})
+            if self.path == "/api/demarrage":         # {groupe, jour: "AAAA-MM-JJ" | null}
+                d = json.loads(corps)
+                if d.get("jour"):
+                    dt.date.fromisoformat(d["jour"])
+                    con.execute("INSERT OR REPLACE INTO demarrages VALUES (?,?)", (d["groupe"], d["jour"]))
+                else:
+                    con.execute("DELETE FROM demarrages WHERE groupe=?", (d["groupe"],))
                 con.commit(); return self._send(200, {"ok": True})
             if self.path == "/api/statut":           # {groupe, statut: complet|fabrication|controle|livree|null}
                 d = json.loads(corps)
