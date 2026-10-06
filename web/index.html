@@ -66,7 +66,8 @@ tfoot td{font-weight:700;position:sticky;bottom:0;background:var(--card);border-
 .task.manuel::before{content:"📌 "}
 .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--mut);margin:10px 0}
 .legend i{display:inline-block;width:14px;height:14px;border-radius:3px;vertical-align:middle;margin-right:4px;border:1px solid var(--line)}
-.panel{position:fixed;right:16px;bottom:16px;width:430px;max-width:calc(100vw - 32px);max-height:92vh;overflow-y:auto;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.25);padding:14px;z-index:20;display:none}
+#voile{position:fixed;inset:0;background:rgba(10,15,30,.45);z-index:25;display:none}
+.panel{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:540px;max-width:calc(100vw - 24px);max-height:92vh;overflow-y:auto;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.25);padding:16px 18px;z-index:30;display:none}
 .panel h3{margin:0 0 6px;font-size:15px}.panel p{margin:4px 0}.panel .x{position:absolute;right:10px;top:8px;border:0;background:none;font-size:18px}
 .chk{display:flex;gap:12px;flex-wrap:wrap;font-size:13px}
 .chk label{display:flex;gap:5px;align-items:center;cursor:pointer}
@@ -100,6 +101,7 @@ button.et.fait{background:#1f9d55;border-color:#1f9d55;color:#fff}
   <div id="lu" class="sub" style="margin-top:14px"></div>
 </main>
 <div id="print"></div>
+<div id="voile" onclick="fermerPanneau()"></div>
 <div class="panel" id="panel"></div>
 <script>
 let RAPP = [], planningLu = null, CMD = [], MOIS = [], stockOk = false, erreurPlan = null, onglet = 'prio', filtre = 'complet', mois = null, G = null;
@@ -146,7 +148,7 @@ function afficher() {
     '<div class="note">⚠️ JPV Stock est introuvable : aucune commande ne peut être déclarée complète. Vérifie que le dossier C:\\Users\\cmore\\JPV_STOCK existe.</div>');
   ({prio: vuePrio, plan: vuePlan, gantt: vueGantt, rapp: vueRapp, sal: vueSal, suivi: vueSuivi})[onglet]();
 }
-async function choisir(k) { onglet = k; if (k === 'gantt') await chargerGantt(); if (k === 'sal') await chargerSal(); if (k === 'suivi') await chargerSuivi(); afficher(); }
+async function choisir(k) { fermerPanneau(); onglet = k; if (k === 'gantt') await chargerGantt(); if (k === 'sal') await chargerSal(); if (k === 'suivi') await chargerSuivi(); afficher(); }
 
 const recherche = c => { const q = $('q').value.toLowerCase(); return !q || JSON.stringify([c.client, c.cde, c.lignes.map(l => [l.vk, l.nomenc, l.designation])]).toLowerCase().includes(q); };
 
@@ -269,8 +271,8 @@ function detail(groupe) {
   LIG_G = groupe; LIG = parts.map(t => ({etape: t.etape || 'toute', nom: t.employe, heures: t.fixe ? t.heures : null}));
   if (!LIG.length) LIG = [{etape: 'toute', nom: '', heures: null}];
   const aide = o => `${o.n} pers. → fin le <b>${fmt(o.fin)}</b> ${o.ok ? '✅' : '❌'} <button onclick='appliquer("${groupe}",${JSON.stringify(o.noms)})'>Appliquer</button><div class="sub">${o.noms.map(NOMS).join(', ')}</div>`;
-  $('panel').style.display = 'block';
-  $('panel').innerHTML = `<button class="x" onclick="$('panel').style.display='none'">×</button>
+  ouvrirPanneau();
+  $('panel').innerHTML = `<button class="x" onclick="fermerPanneau()">×</button>
     <h3>${c.client} <span class="sub">VK ${p.vk || ''}</span></h3><p class="sub">${p.designation || ''}</p>
     <p><b id="totH">${hh(p.heures_total)}</b> h au total · statut : <b>${LIB[p.statut]}</b> · <span class="ind ${p.stock}">${INDIC[p.stock]}</span></p>
     <p>Délai client : <b class="${p.retard ? 'retard' : ''}">${fmt(p.delai) || '—'}</b>${p.fin_commande ? ' · fin prévue : <b class="' + (p.retard ? 'retard' : '') + '">' + fmt(p.fin_commande) + '</b>' + (p.retard ? ' ⚠️ en retard' : '') : ''}</p>
@@ -299,7 +301,10 @@ function resume() {
 }
 function enregistrer() { affecter(LIG_G, LIG.filter(l => l.nom)); }
 function appliquer(groupe, noms) { affecter(groupe, noms.map(nom => ({etape: 'toute', nom, heures: null}))); }
-async function affecter(groupe, lignes) { await post('/api/affectation', {groupe, lignes}); $('panel').style.display = 'none'; rechargerGantt(); }
+async function affecter(groupe, lignes) { await post('/api/affectation', {groupe, lignes}); fermerPanneau(); rechargerGantt(); }
+function ouvrirPanneau() { $('panel').style.display = 'block'; $('voile').style.display = 'block'; }
+function fermerPanneau() { $('panel').style.display = 'none'; $('voile').style.display = 'none'; }
+document.addEventListener('keydown', e => { if (e.key === 'Escape') fermerPanneau(); });
 
 /* ---------------------------------------------------------------- Suivi atelier (tablettes) */
 let SUIVI = null, INFOS = null;
