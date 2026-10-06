@@ -19,12 +19,17 @@ def connecter():
     CREATE TABLE IF NOT EXISTS meta (cle TEXT PRIMARY KEY, valeur TEXT);
     CREATE TABLE IF NOT EXISTS employes (nom TEXT PRIMARY KEY, ordre INTEGER, actif INTEGER DEFAULT 1);
     CREATE TABLE IF NOT EXISTS absences (jour TEXT, nom TEXT, type TEXT, PRIMARY KEY (jour, nom));
-    CREATE TABLE IF NOT EXISTS affectations (groupe TEXT PRIMARY KEY, nom TEXT);
+    CREATE TABLE IF NOT EXISTS affectations (groupe TEXT, nom TEXT, heures REAL, PRIMARY KEY (groupe, nom));
     """)
     existantes = {r[1] for r in con.execute("PRAGMA table_info(lignes)")}
     for c, t in COLONNES.items():                     # ajoute les colonnes manquantes (anciennes bases)
         if c not in existantes and c != "vk":
             con.execute(f"ALTER TABLE lignes ADD COLUMN {c} {t}")
+    if "heures" not in {r[1] for r in con.execute("PRAGMA table_info(affectations)")}:   # ancienne version : 1 salarié par commande
+        con.executescript("""ALTER TABLE affectations RENAME TO affectations_old;
+          CREATE TABLE affectations (groupe TEXT, nom TEXT, heures REAL, PRIMARY KEY (groupe, nom));
+          INSERT INTO affectations (groupe, nom) SELECT groupe, nom FROM affectations_old;
+          DROP TABLE affectations_old;""")
     con.commit()
     return con
 

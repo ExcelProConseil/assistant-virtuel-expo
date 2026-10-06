@@ -202,6 +202,14 @@ function vueGantt() {
   });
   h += `</div></div><div class="legend"><span><i style="background:var(--ok)"></i>complète (prête)</span><span><i style="background:repeating-linear-gradient(45deg,#c9a24a,#c9a24a 4px,#dcb95f 4px,#dcb95f 8px)"></i>incomplète (matériel manquant)</span>
    <span><i style="border:2px solid var(--ko)"></i>fini après le délai</span><span><i style="background:var(--cp)"></i>congé payé</span><span><i style="background:var(--abs)"></i>absence</span><span><i style="background:var(--fer)"></i>férié</span><span>📌 salarié choisi à la main</span></div>`;
+  const vus = []; G.taches.forEach(t => { if (!vus.find(x => x.groupe === t.groupe)) vus.push(t); });
+  h += `<h3 style="margin:18px 0 8px">Affectation des commandes <span class="sub">(clique sur « Affecter » pour choisir qui travaille dessus)</span></h3><div class="wrap"><table>
+    <thead><tr><th>Priorité</th><th>Client</th><th>CDE</th><th class="n">Heures</th><th>Délai</th><th>Salarié(s)</th><th>Fin prévue</th><th>Stock</th><th></th></tr></thead><tbody>${vus.map((t, i) => {
+    const ps = G.taches.filter(x => x.groupe === t.groupe);
+    return `<tr><td>${i + 1}</td><td><b>${t.client || ''}</b></td><td>${t.cde || ''}</td><td class="n">${hh(t.heures_total)}</td><td>${fmt(t.delai)}</td>
+      <td>${t.manuel ? '📌 ' : ''}${ps.map(p => NOMS(p.employe) + (ps.length > 1 ? ' (' + hh(p.heures) + ' h)' : '')).join(', ')}</td>
+      <td class="${t.retard ? 'retard' : ''}">${fmt(t.fin_commande)}${t.retard ? ' ⚠️' : ''}</td><td>${t.statut === 'complete' ? '✅ complète' : '⏳ incomplète'}</td>
+      <td><button onclick="detail('${t.groupe}')">Affecter</button></td></tr>`; }).join('')}</tbody></table></div>`;
   if (G.sans_heures.length) h += `<div class="note"><b>${G.sans_heures.length} commande(s) sans heures dans l'Excel</b> (non planifiées) : ${G.sans_heures.map(s => s.client + (s.delai ? ' ' + fmt(s.delai) : '')).join(' · ')}</div>`;
   $('vue').innerHTML = h;
 }
@@ -209,14 +217,30 @@ async function rechargerGantt() { await chargerGantt(); afficher(); }
 function decaler(j) { gDebut.setDate(gDebut.getDate() + j); rechargerGantt(); }
 async function inclure(nom, actif) { await post('/api/employe', {nom, actif}); rechargerGantt(); }
 function detail(groupe) {
-  const t = G.taches.find(x => x.groupe === groupe), c = CMD.find(x => x.groupe === groupe); if (!t) return;
+  const parts = G.taches.filter(x => x.groupe === groupe), c = CMD.find(x => x.groupe === groupe); if (!parts.length) return;
+  const t = parts[0], opts = G.options[groupe] || [], manuel = parts.some(x => x.manuel);
+  const mine = Object.fromEntries(parts.map(x => [x.employe, x]));
+  const aide = o => `${o.n} pers. → fin le <b>${fmt(o.fin)}</b> ${o.ok ? '✅' : '❌'} <button onclick='appliquer("${groupe}",${JSON.stringify(o.noms)})'>Appliquer</button><div class="sub">${o.noms.map(NOMS).join(', ')}</div>`;
   $('panel').style.display = 'block';
-  $('panel').innerHTML = `<button class="x" onclick="$('panel').style.display='none'">×</button><h3>${t.client} <span class="sub">${t.cde || ''}</span></h3>
-    <p>${hh(t.heures)} h · ${t.statut === 'complete' ? '✅ complète' : '⚠️ ' + c.nb_manque + ' ligne(s) à compléter'}</p>
-    <p>Planifiée du <b>${fmt(t.debut)}</b> au <b>${fmt(t.fin)}</b></p><p>Délai client : <b class="${t.retard ? 'retard' : ''}">${fmt(t.delai) || '—'}</b>${t.retard ? ' (dépassé)' : ''}</p>
-    <p>Salarié : <select onchange="affecter('${t.groupe}',this.value)"><option value="">Automatique</option>${G.salaries.filter(s => s.actif).map(s => `<option value="${s.nom}" ${t.manuel && s.nom === t.employe ? 'selected' : ''}>${NOMS(s.nom)}</option>`).join('')}</select></p>`;
+  $('panel').innerHTML = `<button class="x" onclick="$('panel').style.display='none'">×</button>
+    <h3>${c.client} <span class="sub">${c.cde || ''}</span></h3>
+    <p>${hh(t.heures_total)} h au total · ${c.statut === 'complete' ? '✅ complète' : '⚠️ ' + c.nb_manque + ' ligne(s) à compléter'}</p>
+    <p>Délai client : <b class="${t.retard ? 'retard' : ''}">${fmt(t.delai) || '—'}</b> · fin prévue : <b class="${t.retard ? 'retard' : ''}">${fmt(t.fin_commande)}</b>${t.retard ? ' ⚠️ en retard' : ''}</p>
+    <p><b>Qui travaille dessus ?</b> <span class="sub">(coche, et indique les heures de chacun, ou laisse vide pour répartir à parts égales)</span></p>
+    <div id="aff">${G.salaries.filter(s => s.actif).map(s => `<div style="display:flex;gap:6px;align-items:center;margin:3px 0"><label style="flex:1"><input type="checkbox" value="${s.nom}" ${manuel && mine[s.nom] ? 'checked' : ''}> ${NOMS(s.nom)}</label>
+      <input type="number" min="0" step="0.5" placeholder="auto" style="width:70px" data-h="${s.nom}" value="${manuel && mine[s.nom] && mine[s.nom].fixe ? mine[s.nom].heures : ''}"> h</div>`).join('')}</div>
+    <p><button class="on" onclick="enregistrer('${groupe}')">Enregistrer</button> <button onclick="affecter('${groupe}',[])">Automatique</button></p>
+    <p><b>Combien de personnes pour tenir le délai ?</b></p>${opts.map(o => `<p>${aide(o)}</p>`).join('') || '<p class="sub">—</p>'}`;
 }
-async function affecter(groupe, nom) { await post('/api/affectation', {groupe, nom}); $('panel').style.display = 'none'; rechargerGantt(); }
+function enregistrer(groupe) {
+  const rep = [...document.querySelectorAll('#aff input[type=checkbox]:checked')].map(i => {
+    const h = parseFloat(document.querySelector(`#aff input[data-h="${i.value.replace(/"/g, '\\"')}"]`).value);
+    return {nom: i.value, heures: h > 0 ? h : null};
+  });
+  affecter(groupe, rep);
+}
+function appliquer(groupe, noms) { affecter(groupe, noms.map(nom => ({nom, heures: null}))); }
+async function affecter(groupe, repartition) { await post('/api/affectation', {groupe, repartition}); $('panel').style.display = 'none'; rechargerGantt(); }
 
 const post = (u, d) => fetch(u, {method: 'POST', body: JSON.stringify(d)});
 async function livrer(groupe, livree) { await post('/api/livree', {groupe, livree}); charger(); }

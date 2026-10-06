@@ -53,10 +53,11 @@ class H(BaseHTTPRequestHandler):
             if self.path == "/api/agent/commandes":
                 d = json.loads(corps); d = d["lignes"] if isinstance(d, dict) else d
                 upsert_lignes(con, d, source="agent"); return self._send(200, {"ok": len(d)})
-            if self.path == "/api/affectation":
+            if self.path == "/api/affectation":      # {groupe, repartition:[{nom, heures|null}]} ; liste vide = automatique
                 d = json.loads(corps)
-                if d.get("nom"): con.execute("INSERT OR REPLACE INTO affectations VALUES (?,?)", (d["groupe"], d["nom"]))
-                else: con.execute("DELETE FROM affectations WHERE groupe=?", (d["groupe"],))
+                con.execute("DELETE FROM affectations WHERE groupe=?", (d["groupe"],))
+                for r in d.get("repartition", []):
+                    con.execute("INSERT OR REPLACE INTO affectations VALUES (?,?,?)", (d["groupe"], r["nom"], r.get("heures") or None))
                 con.commit(); return self._send(200, {"ok": True})
             if self.path == "/api/employe":
                 d = json.loads(corps)
