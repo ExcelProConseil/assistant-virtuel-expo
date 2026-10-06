@@ -179,7 +179,7 @@ function vueGantt() {
   const emps = G.salaries.filter(s => s.actif).map(s => s.nom);
   let h = `<div class="bar"><button onclick="decaler(-14)">◀</button><button onclick="gDebut=lundi(new Date());rechargerGantt()">Aujourd'hui</button><button onclick="decaler(14)">▶</button>
     <select onchange="gJours=+this.value;rechargerGantt()">${[[28, '4 semaines'], [56, '8 semaines'], [91, '13 semaines'], [182, '6 mois']].map(([v, l]) => `<option value="${v}" ${gJours == v ? 'selected' : ''}>${l}</option>`).join('')}</select>
-    <span class="sub">Les commandes <b>complètes</b> sont planifiées en premier, par délai, puis les incomplètes (hachurées). 8,5 h/jour du lundi au jeudi, 5 h le vendredi.</span></div>
+    <span class="sub">Seules les commandes <b>complètes</b> sont planifiées (par délai). 8,5 h/jour du lundi au jeudi, 5 h le vendredi.</span></div>
     <div class="chk" style="margin-bottom:10px"><b>Salariés inclus :</b>${G.salaries.map(s => `<label><input type="checkbox" ${s.actif ? 'checked' : ''} onchange="inclure('${s.nom.replace(/'/g, "\\'")}',this.checked)">${NOMS(s.nom)}</label>`).join('')}</div>`;
   // en-tête : mois puis jours
   let mh = '', cur = null, cnt = 0;
@@ -191,26 +191,27 @@ function vueGantt() {
   emps.forEach(nom => {
     const ts = G.taches.filter(t => t.employe === nom && t.fin >= deb && t.debut <= fin).sort((a, b) => a.debut.localeCompare(b.debut));
     const lanes = []; const place = ts.map(t => { let k = lanes.findIndex(f => f < t.debut); if (k < 0) { k = lanes.length; lanes.push(''); } lanes[k] = t.fin; return k; });
-    const hLigne = Math.max(1, lanes.length) * 26 + 8;
+    const hLigne = Math.max(1, lanes.length) * 26 + 8 < 46 ? 46 : Math.max(1, lanes.length) * 26 + 8;
     const cells = G.jours.map(j => `<div class="gd ${G.etat[nom][j.date] || ''} ${j.auj ? 'auj' : ''}" style="height:${hLigne}px" title="${G.etat[nom][j.date] === 'cp' ? 'Congé payé' : G.etat[nom][j.date] === 'absence' ? 'Absence' : ''}"></div>`).join('');
     const bars = ts.map((t, i) => {
       const a = Math.max(0, Math.round((dd(t.debut < deb ? deb : t.debut) - dd(deb)) / 864e5)), b = Math.min(n - 1, Math.round((dd(t.fin) - dd(deb)) / 864e5));
       const tip = `${t.client} ${t.cde || ''} · ${hh(t.heures)} h · ${fmt(t.debut)} → ${fmt(t.fin)}${t.delai ? ' · délai ' + fmt(t.delai) : ''}${t.retard ? ' · EN RETARD' : ''}`;
       return `<div class="task ${t.statut} ${t.retard ? 'retard' : ''} ${t.manuel ? 'manuel' : ''}" style="left:${a * W + 1}px;width:${(b - a + 1) * W - 2}px;top:${place[i] * 26 + 4}px" title="${tip}" onclick="detail('${t.groupe}')">${t.client} · ${hh(t.heures)} h</div>`;
     }).join('');
-    h += `<div class="gr"><div class="gn" style="height:${hLigne}px">${NOMS(nom)}<span class="sub">${hh(G.charge[nom])} h planifiées</span></div><div class="gdays" style="position:relative">${cells}${bars}</div></div>`;
+    h += `<div class="gr"><div class="gn" style="height:${hLigne}px">${NOMS(nom)}<span class="sub">${hh(G.charge[nom]) || 0} h planifiées</span></div><div class="gdays" style="position:relative">${cells}${bars}</div></div>`;
   });
-  h += `</div></div><div class="legend"><span><i style="background:var(--ok)"></i>complète (prête)</span><span><i style="background:repeating-linear-gradient(45deg,#c9a24a,#c9a24a 4px,#dcb95f 4px,#dcb95f 8px)"></i>incomplète (matériel manquant)</span>
-   <span><i style="border:2px solid var(--ko)"></i>fini après le délai</span><span><i style="background:var(--cp)"></i>congé payé</span><span><i style="background:var(--abs)"></i>absence</span><span><i style="background:var(--fer)"></i>férié</span><span>📌 salarié choisi à la main</span></div>`;
+  h += `</div></div><div class="legend"><span><i style="background:var(--ok)"></i>complète (prête)</span><span><i style="border:2px solid var(--ko)"></i>fini après le délai</span><span><i style="background:var(--cp)"></i>congé payé</span><span><i style="background:var(--abs)"></i>absence</span><span><i style="background:var(--fer)"></i>férié</span><span>📌 salarié choisi à la main</span></div>`;
   const vus = []; G.taches.forEach(t => { if (!vus.find(x => x.groupe === t.groupe)) vus.push(t); });
   h += `<h3 style="margin:18px 0 8px">Affectation des commandes <span class="sub">(clique sur « Affecter » pour choisir qui travaille dessus)</span></h3><div class="wrap"><table>
     <thead><tr><th>Priorité</th><th>Client</th><th>CDE</th><th class="n">Heures</th><th>Délai</th><th>Salarié(s)</th><th>Fin prévue</th><th>Stock</th><th></th></tr></thead><tbody>${vus.map((t, i) => {
     const ps = G.taches.filter(x => x.groupe === t.groupe);
     return `<tr><td>${i + 1}</td><td><b>${t.client || ''}</b></td><td>${t.cde || ''}</td><td class="n">${hh(t.heures_total)}</td><td>${fmt(t.delai)}</td>
       <td>${t.manuel ? '📌 ' : ''}${ps.map(p => NOMS(p.employe) + (ps.length > 1 ? ' (' + hh(p.heures) + ' h)' : '')).join(', ')}</td>
-      <td class="${t.retard ? 'retard' : ''}">${fmt(t.fin_commande)}${t.retard ? ' ⚠️' : ''}</td><td>${t.statut === 'complete' ? '✅ complète' : '⏳ incomplète'}</td>
+      <td class="${t.retard ? 'retard' : ''}">${fmt(t.fin_commande)}${t.retard ? ' ⚠️' : ''}</td><td>✅ complète</td>
       <td><button onclick="detail('${t.groupe}')">Affecter</button></td></tr>`; }).join('')}</tbody></table></div>`;
-  if (G.sans_heures.length) h += `<div class="note"><b>${G.sans_heures.length} commande(s) sans heures dans l'Excel</b> (non planifiées) : ${G.sans_heures.map(s => s.client + (s.delai ? ' ' + fmt(s.delai) : '')).join(' · ')}</div>`;
+  if (G.en_attente.length) h += `<h3 style="margin:18px 0 8px">En attente de matériel <span class="sub">(${G.en_attente.length} commande(s) incomplète(s) : elles seront planifiées et affectables dès qu'elles seront complètes)</span></h3><div class="wrap"><table>
+    <thead><tr><th>Client</th><th>CDE</th><th class="n">Heures</th><th>Délai</th><th>Lignes à compléter</th></tr></thead><tbody>${G.en_attente.map(c => `<tr><td><b>${c.client || ''}</b></td><td>${c.cde || ''}</td><td class="n">${hh(c.heures) || '—'}</td><td>${fmt(c.delai)}</td><td>${c.nb_manque} sur ${c.nb_lignes} ${c.pre_affectee ? ' · 📌 salarié déjà choisi' : ''}</td></tr>`).join('')}</tbody></table></div>`;
+  if (G.sans_heures.length) h += `<div class="note"><b>${G.sans_heures.length} commande(s) sans heures dans l'Excel</b> (complètes mais non planifiées) : ${G.sans_heures.map(s => s.client + (s.delai ? ' ' + fmt(s.delai) : '')).join(' · ')}</div>`;
   $('vue').innerHTML = h;
 }
 async function rechargerGantt() { await chargerGantt(); afficher(); }

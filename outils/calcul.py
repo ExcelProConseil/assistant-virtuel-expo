@@ -104,10 +104,16 @@ def gantt(con, cmds, debut, nb_jours, aujourdhui=None, horizon=400):
         seg = placer(n, h, auj)
         return seg[-1][0] if seg else None
 
-    a_faire = [c for c in cmds if not c["livree"] and c["heures"] > 0]
-    a_faire.sort(key=lambda c: (c["statut"] != "complete", c["delai"] or "9999", c["groupe"]))
+    # seules les commandes COMPLÈTES (tout le matériel en stock) sont planifiées ; les affectations
+    # déjà choisies pour une commande incomplète sont conservées et s'appliqueront quand elle sera complète
+    a_faire = [c for c in cmds if c["statut"] == "complete" and c["heures"] > 0]
+    a_faire.sort(key=lambda c: (c["delai"] or "9999", c["groupe"]))
     taches, options = [], {}
-    sans_heures = [c for c in cmds if not c["livree"] and c["heures"] <= 0]
+    sans_heures = [c for c in cmds if c["statut"] == "complete" and c["heures"] <= 0]
+    en_attente = [dict(groupe=c["groupe"], client=c["client"], cde=c["cde"], delai=c["delai"],
+                       heures=round(c["heures"], 2), nb_manque=c["nb_manque"], nb_lignes=len(c["lignes"]),
+                       pre_affectee=c["groupe"] in manuel)
+                  for c in cmds if c["statut"] == "incomplete"]
     for c in a_faire:
         d = _date(c["delai"])
         # simulation : combien de personnes pour tenir le délai ? (les n salariés qui finiraient le plus tôt)
@@ -148,6 +154,6 @@ def gantt(con, cmds, debut, nb_jours, aujourdhui=None, horizon=400):
         for jr in jours:
             t = abs_.get((jr["date"], n))
             etat[n][jr["date"]] = t or ("ferie" if jr["ferie"] else ("we" if jr["we"] else ""))
-    return dict(salaries=tous, jours=jours, etat=etat, taches=taches, options=options,
+    return dict(salaries=tous, jours=jours, etat=etat, taches=taches, options=options, en_attente=en_attente,
                 sans_heures=[dict(groupe=c["groupe"], client=c["client"], delai=c["delai"]) for c in sans_heures],
                 charge={n: round(sum(h for j, h in charge[n].items()), 1) for n in emps})
