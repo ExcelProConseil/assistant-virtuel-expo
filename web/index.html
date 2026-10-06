@@ -82,7 +82,7 @@ tfoot td{font-weight:700;position:sticky;bottom:0;background:var(--card);border-
 </main>
 <div class="panel" id="panel"></div>
 <script>
-let CMD = [], MOIS = [], stockOk = false, onglet = 'prio', filtre = 'complete', mois = null, G = null;
+let CMD = [], MOIS = [], stockOk = false, erreurPlan = null, onglet = 'prio', filtre = 'complete', mois = null, G = null;
 let gDebut = lundi(new Date()), gJours = 56;
 const $ = id => document.getElementById(id);
 const fmt = d => d ? d.split('-').reverse().join('/') : '';
@@ -96,7 +96,7 @@ const STAT = {ok: 'STOCK OK', manque: 'STOCK PARTIEL', inconnu: 'pas dans JPV St
 
 async function charger() {
   const r = await (await fetch('/api/commandes')).json();
-  CMD = r.commandes; MOIS = r.mois; stockOk = r.stock_charge;
+  CMD = r.commandes; MOIS = r.mois; stockOk = r.stock_charge; erreurPlan = r.erreur;
   if (!mois) mois = (CMD.find(c => !c.livree) || {mois: MOIS[0]}).mois;
   if (onglet === 'gantt') await chargerGantt();
   afficher();
@@ -108,8 +108,8 @@ async function chargerGantt() {
 function afficher() {
   $('nav').innerHTML = [['prio', 'Prioritaires'], ['plan', 'Planning'], ['gantt', 'Gantt salariés']].map(([k, l]) =>
     `<button class="${onglet === k ? 'on' : ''}" onclick="choisir('${k}')">${l}</button>`).join('');
-  $('note').innerHTML = stockOk ? '' :
-    '<div class="note">⚠️ JPV Stock est introuvable : aucune commande ne peut être déclarée complète. Vérifie que le dossier C:\\Users\\cmore\\JPV_STOCK existe.</div>';
+  $('note').innerHTML = (erreurPlan ? `<div class="note">⚠️ ${erreurPlan}</div>` : '') + (CMD.length === 0 && !erreurPlan ? '<div class="note">Aucune commande : le planning Excel n\'a pas encore été lu.</div>' : '') + (stockOk ? '' :
+    '<div class="note">⚠️ JPV Stock est introuvable : aucune commande ne peut être déclarée complète. Vérifie que le dossier C:\\Users\\cmore\\JPV_STOCK existe.</div>');
   ({prio: vuePrio, plan: vuePlan, gantt: vueGantt})[onglet]();
 }
 async function choisir(k) { onglet = k; if (k === 'gantt') await chargerGantt(); afficher(); }

@@ -121,8 +121,12 @@ def reimporter_si_modifie(con):
     r = con.execute("SELECT valeur FROM meta WHERE cle='planning_mtime'").fetchone()
     if r and r[0] == m:
         return False
-    tmp = pathlib.Path(tempfile.mkdtemp()) / "planning.xlsx"
-    shutil.copy(PLANNING, tmp)                 # on lit une copie : marche même si Excel est ouvert
+    try:                                       # on lit une copie : marche même si Excel est ouvert
+        tmp = pathlib.Path(tempfile.mkdtemp()) / "planning.xlsx"
+        with open(PLANNING, "rb") as src, open(tmp, "wb") as dst:
+            shutil.copyfileobj(src, dst)
+    except PermissionError:                    # copie refusée (OneDrive, fichier verrouillé) : lecture directe
+        tmp = PLANNING
     remplacer_lignes_excel(con, lire(tmp))
     remplacer_salaries(con, *lire_salaries(tmp))
     con.execute("INSERT OR REPLACE INTO meta VALUES ('planning_mtime', ?)", (m,))

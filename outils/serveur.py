@@ -25,13 +25,16 @@ class H(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path.startswith("/api/commandes"):
             con = connecter()
+            erreur = None
             try: reimporter_si_modifie(con)
-            except Exception as e: print("Relecture du planning impossible :", e)
+            except Exception as e:
+                erreur = f"Planning Excel illisible ({e}). Ferme Excel ou lance : python outils/importer_excel.py \"chemin du planning\""
+                print("Relecture du planning impossible :", e)
             try: synchroniser(con)
             except Exception as e: print("Sync JPV Stock impossible :", e)
             n = con.execute("SELECT COUNT(*) FROM statut_stock").fetchone()[0]
             cmds, mois = commandes(con)
-            return self._send(200, {"stock_charge": n > 0, "mois": mois, "commandes": cmds})
+            return self._send(200, {"stock_charge": n > 0, "erreur": erreur, "mois": mois, "commandes": cmds})
         if self.path.startswith("/api/gantt"):
             q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
             con = connecter()
