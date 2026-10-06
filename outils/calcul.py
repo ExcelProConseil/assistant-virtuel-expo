@@ -12,38 +12,38 @@ def _date(s):
     try: return dt.date.fromisoformat(s)
     except (TypeError, ValueError): return None
 
+STATUTS = ("complet", "fabrication", "controle", "livree")      # + "attente" quand rien n'est choisi
+A_PLANIFIER = ("complet", "fabrication", "controle")             # commandes affectables à un salarié
+
 def commandes(con, aujourdhui=None):
+    """Le STATUT de chaque commande est choisi à la main (table `statuts`). JPV Stock ne donne qu'une
+    indication (champ `stock`), il ne change jamais le statut. Sans choix : « attente », ou « livree »
+    si la ligne est verte dans l'Excel."""
     auj = aujourdhui or dt.date.today()
     stock = {r["vk"]: r["statut"] for r in con.execute("SELECT vk, statut FROM statut_stock")}
+    choix = {r["groupe"]: r["statut"] for r in con.execute("SELECT groupe, statut FROM statuts")}
     groupes, ordre_mois = {}, {}
     for r in con.execute("SELECT * FROM lignes ORDER BY ordre, rowid"):
         groupes.setdefault(r["groupe"], []).append(dict(r))
         ordre_mois.setdefault(r["mois"], len(ordre_mois))
     cmds = []
     for g, lignes in groupes.items():
-        for l in lignes:
+        for l in lignes:                                   # indication JPV Stock, ligne par ligne
             st = stock.get(l["vk"])
-            if l.get("force_etat") == "livree":                  # choix manuel (bouton « Marquer comme livrée »)
-                l["statut"] = "livree"
-            elif l.get("force_etat") == "encours":               # choix manuel (bouton « Remettre en cours »)
-                l["statut"] = "manque" if st in ("STOCK PARTIEL",) else ("ok" if st in ("STOCK OK", "EXPEDIEE") else "inconnu")
-            elif st == "EXPEDIEE" or l["livree"]:
-                l["statut"] = "livree"
-            else:
-                l["statut"] = LIBELLE.get(st, "inconnu")
-            l["stock_jpv"] = st
+            l["statut"] = LIBELLE.get(st, "inconnu")
         delais = [d for d in (_date(l["delai"]) for l in lignes) if d]
         p = lignes[0]
-        livree = all(l["statut"] == "livree" for l in lignes)
         manque = sum(l["statut"] in ("manque", "inconnu") for l in lignes)
+        indic = "ok" if not manque else ("partiel" if any(l["statut"] in ("ok", "livree") for l in lignes) else "inconnu")
+        statut = choix.get(g) or ("livree" if all(l["livree"] for l in lignes) else "attente")
         d = min(delais) if delais else None
         cmds.append(dict(groupe=g, mois=p["mois"], client=p["client"], cde=p["cde"], type=p["type"],
                          vk=p["vk"], vks=[l["vk"] for l in lignes], designation=p["designation"],
                          delai=d.isoformat() if d else None,
                          ca=sum(l["ca_total"] or 0 for l in lignes),
                          heures=sum(l["h_tot"] or 0 for l in lignes),
-                         livree=livree, nb_manque=manque, lignes=lignes,
-                         statut="livree" if livree else ("complete" if not manque else "incomplete"),
+                         statut=statut, livree=statut == "livree", manuel=g in choix,
+                         stock=indic, nb_manque=manque, lignes=lignes,
                          jours=(d - auj).days if d else None))
     cmds.sort(key=lambda c: (c["livree"], c["delai"] or "9999", c["groupe"]))
     return cmds, list(ordre_mois)
@@ -112,14 +112,14 @@ def gantt(con, cmds, debut, nb_jours, aujourdhui=None, horizon=400):
     # Seules les commandes COMPLÈTES (tout le matériel en stock) peuvent être affectées, et c'est TOI qui
     # choisis le salarié : rien n'est placé automatiquement. Un choix fait pour une commande encore
     # incomplète est conservé et s'appliquera quand elle sera complète.
-    a_faire = [c for c in cmds if c["statut"] == "complete" and c["heures"] > 0]
+    a_faire = [c for c in cmds if c["statut"] in A_PLANIFIER and c["heures"] > 0]
     a_faire.sort(key=lambda c: (c["delai"] or "9999", c["groupe"]))
     taches, options, pretes = [], {}, []
-    sans_heures = [c for c in cmds if c["statut"] == "complete" and c["heures"] <= 0]
+    sans_heures = [c for c in cmds if c["statut"] in A_PLANIFIER and c["heures"] <= 0]
     en_attente = [dict(groupe=c["groupe"], client=c["client"], cde=c["cde"], vk=c["vk"], designation=c["designation"],
-                       delai=c["delai"], heures=round(c["heures"], 2), nb_manque=c["nb_manque"],
+                       delai=c["delai"], heures=round(c["heures"], 2), nb_manque=c["nb_manque"], stock=c["stock"],
                        nb_lignes=len(c["lignes"]), pre_affectee=c["groupe"] in manuel)
-                  for c in cmds if c["statut"] == "incomplete"]
+                  for c in cmds if c["statut"] == "attente"]
     for c in a_faire:
         d = _date(c["delai"])
         # aide : combien de personnes pour tenir le délai ? (les n salariés qui finiraient le plus tôt)
@@ -140,7 +140,7 @@ def gantt(con, cmds, debut, nb_jours, aujourdhui=None, horizon=400):
         fin_cmd = max(seg[-1][0] for _, _, seg in placees) if placees else None
         retard = bool(d and fin_cmd and fin_cmd > d)
         pretes.append(dict(groupe=c["groupe"], client=c["client"], cde=c["cde"], vk=c["vk"], designation=c["designation"],
-                           delai=c["delai"], heures_total=round(c["heures"], 2), affectee=bool(placees),
+                           delai=c["delai"], heures_total=round(c["heures"], 2), affectee=bool(placees), statut=c["statut"], stock=c["stock"],
                            affectees=[dict(nom=n, heures=round(h, 2)) for n, h, _ in placees],
                            fin_commande=fin_cmd.isoformat() if fin_cmd else None, retard=retard))
         for n, h, seg in placees:

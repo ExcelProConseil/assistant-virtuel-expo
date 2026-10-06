@@ -6,7 +6,6 @@ CHAMPS = ["vk", "mois", "ordre", "groupe", "client", "cde", "type", "nomenc", "d
           "date_recep", "date_ar", "delai", "rec_prod", "etape", "depart", "h_unit", "h_reelles",
           "h_tot", "ca_unit", "ca_total", "couleur", "principale", "livree"]
 COLONNES = {c: "TEXT" for c in CHAMPS}
-COLONNES["force_etat"] = "TEXT"       # choix manuel : 'livree' ou 'encours' (prioritaire sur Excel et JPV Stock)
 COLONNES.update(qte="REAL", ordre="INTEGER", h_unit="REAL", h_reelles="REAL", h_tot="REAL",
                 ca_unit="REAL", ca_total="REAL", principale="INTEGER", livree="INTEGER DEFAULT 0")
 
@@ -17,6 +16,7 @@ def connecter():
     con.executescript("""
     CREATE TABLE IF NOT EXISTS lignes (vk TEXT PRIMARY KEY, source TEXT);
     CREATE TABLE IF NOT EXISTS statut_stock (vk TEXT PRIMARY KEY, statut TEXT, maj TEXT);
+    CREATE TABLE IF NOT EXISTS statuts (groupe TEXT PRIMARY KEY, statut TEXT);   -- statut choisi à la main
     CREATE TABLE IF NOT EXISTS meta (cle TEXT PRIMARY KEY, valeur TEXT);
     CREATE TABLE IF NOT EXISTS employes (nom TEXT PRIMARY KEY, ordre INTEGER, actif INTEGER DEFAULT 1);
     CREATE TABLE IF NOT EXISTS absences (jour TEXT, nom TEXT, type TEXT, PRIMARY KEY (jour, nom));

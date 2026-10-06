@@ -26,11 +26,14 @@ button{cursor:pointer}button.on{background:var(--acc);color:#fff;border-color:va
 .sub{color:var(--mut);font-size:12px}
 /* priorités */
 .cmd{background:var(--card);border:1px solid var(--line);border-left:6px solid var(--mut);border-radius:10px;margin-bottom:8px}
-.cmd.complete{border-left-color:var(--ok)}.cmd.incomplete{border-left-color:var(--ko)}
-.head{display:grid;grid-template-columns:34px 1fr 150px 90px 170px;gap:10px;padding:9px 14px;align-items:center;cursor:pointer}
+.cmd.complet{border-left-color:#1f9d55}.cmd.fabrication{border-left-color:#e08a00}.cmd.controle{border-left-color:#7a4fd6}.cmd.attente{border-left-color:#8b93a5}.cmd.livree{border-left-color:#5b6578}
+select.st{font-weight:600;border:0;color:#fff;padding:5px 8px;border-radius:99px;cursor:pointer}
+select.st.attente{background:#8b93a5}select.st.complet{background:#1f9d55}select.st.fabrication{background:#e08a00}select.st.controle{background:#7a4fd6}select.st.livree{background:#5b6578}
+.ind{font-size:12px;color:var(--mut);white-space:nowrap}.ind.ok{color:var(--ok)}.ind.partiel{color:var(--warn)}
+.head{display:grid;grid-template-columns:34px 1fr 150px 90px 150px 150px;gap:10px;padding:9px 14px;align-items:center;cursor:pointer}
 .rang{font-weight:700;color:var(--mut)}.client{font-weight:600}
 .badge{padding:3px 10px;border-radius:99px;font-size:12px;font-weight:600;color:#fff;background:var(--mut);text-align:center}
-.complete .badge{background:var(--ok)}.incomplete .badge{background:var(--ko)}
+
 .retard{color:var(--ko);font-weight:600}.proche{color:var(--warn);font-weight:600}
 .det{display:none;border-top:1px solid var(--line);padding:6px 14px 12px;overflow-x:auto}.cmd.open .det{display:block}
 /* tableau mensuel */
@@ -58,7 +61,7 @@ tfoot td{font-weight:700;position:sticky;bottom:0;background:var(--card);border-
 .gd.auj{box-shadow:inset 2px 0 0 var(--ko),inset -2px 0 0 var(--ko)}
 .ghead .gd{padding:2px 0;line-height:1.2}.ghead .gm{font-weight:700;color:var(--txt);text-align:left;padding:3px 6px;border-right:1px solid var(--line);white-space:nowrap;overflow:hidden}
 .task{position:absolute;height:22px;border-radius:5px;font-size:11px;line-height:22px;padding:0 6px;color:#fff;overflow:hidden;white-space:nowrap;cursor:pointer;background:var(--ok);border:1px solid rgba(0,0,0,.15)}
-.task.incomplete{background:repeating-linear-gradient(45deg,#c9a24a,#c9a24a 6px,#dcb95f 6px,#dcb95f 12px);color:#2a2000}
+.task.fabrication{background:#e08a00}.task.controle{background:#7a4fd6}
 .task.retard{outline:2px solid var(--ko);outline-offset:-1px}
 .task.manuel::before{content:"📌 "}
 .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--mut);margin:10px 0}
@@ -82,7 +85,7 @@ tfoot td{font-weight:700;position:sticky;bottom:0;background:var(--card);border-
 </main>
 <div class="panel" id="panel"></div>
 <script>
-let CMD = [], MOIS = [], stockOk = false, erreurPlan = null, onglet = 'prio', filtre = 'complete', mois = null, G = null;
+let CMD = [], MOIS = [], stockOk = false, erreurPlan = null, onglet = 'prio', filtre = 'complet', mois = null, G = null;
 let gDebut = lundi(new Date()), gJours = 56;
 const $ = id => document.getElementById(id);
 const fmt = d => d ? d.split('-').reverse().join('/') : '';
@@ -93,6 +96,12 @@ const dd = s => { const [y, m, j] = s.split('-').map(Number); return new Date(y,
 function lundi(d) { const x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); x.setDate(x.getDate() - (x.getDay() + 6) % 7); return x; }
 const NOMS = s => s.toLowerCase().replace(/(^|\s)\S/g, c => c.toUpperCase());
 const STAT = {ok: 'STOCK OK', manque: 'STOCK PARTIEL', inconnu: 'pas dans JPV Stock', livree: 'expédiée'};
+const STATUTS = [['attente', 'En attente'], ['complet', 'Complet'], ['fabrication', 'En fabrication'], ['controle', 'Au contrôle'], ['livree', 'Livrée']];
+const LIB = Object.fromEntries(STATUTS);
+const INDIC = {ok: '💡 stock complet', partiel: '💡 stock partiel', inconnu: '💡 stock inconnu'};
+// menu de statut : c'est TOI qui décides, rien ne change tout seul
+const selStatut = c => `<select class="st ${c.statut}" onclick="event.stopPropagation()" onchange="majStatut('${c.groupe}',this.value)">${STATUTS.map(([k, l]) => `<option value="${k}" ${c.statut === k ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
+async function majStatut(groupe, v) { await post('/api/statut', {groupe, statut: v === 'attente' ? null : v}); charger(); }
 
 async function charger() {
   const r = await (await fetch('/api/commandes')).json();
@@ -118,32 +127,33 @@ const recherche = c => { const q = $('q').value.toLowerCase(); return !q || JSON
 
 /* ---------------------------------------------------------------- Prioritaires */
 function vuePrio() {
-  const ouv = CMD.filter(c => !c.livree), compl = ouv.filter(c => c.statut === 'complete');
-  const heures = compl.reduce((s, c) => s + c.heures, 0);
+  const nb = k => CMD.filter(c => c.statut === k).length;
+  const heures = k => CMD.filter(c => c.statut === k).reduce((s, c) => s + c.heures, 0);
   let h = `<div class="kpis">
-    <div class="kpi"><b>${ouv.length}</b><span>commandes à livrer</span></div>
-    <div class="kpi"><b style="color:var(--ok)">${compl.length}</b><span>complètes (prêtes à produire)</span></div>
-    <div class="kpi"><b style="color:var(--ko)">${ouv.length - compl.length}</b><span>incomplètes</span></div>
-    <div class="kpi"><b>${hh(heures)} h</b><span>de travail prêt</span></div>
-    <div class="kpi"><b>${eur(compl.reduce((s, c) => s + c.ca, 0))}</b><span>CA prêt à produire</span></div></div>
-    <div class="bar">${[['complete', 'Prioritaires (complètes)'], ['incomplete', 'Incomplètes'], ['toutes', 'Toutes'], ['livree', 'Livrées']].map(([k, l]) =>
-      `<button class="${filtre === k ? 'on' : ''}" onclick="filtre='${k}';afficher()">${l}</button>`).join('')}</div>`;
+    <div class="kpi"><b style="color:#1f9d55">${nb('complet')}</b><span>Complet · ${hh(heures('complet')) || 0} h</span></div>
+    <div class="kpi"><b style="color:#e08a00">${nb('fabrication')}</b><span>En fabrication · ${hh(heures('fabrication')) || 0} h</span></div>
+    <div class="kpi"><b style="color:#7a4fd6">${nb('controle')}</b><span>Au contrôle</span></div>
+    <div class="kpi"><b style="color:#8b93a5">${nb('attente')}</b><span>En attente (sans statut)</span></div>
+    <div class="kpi"><b>${nb('livree')}</b><span>Livrées</span></div></div>
+    <div class="bar">${[['complet', 'Complet'], ['fabrication', 'En fabrication'], ['controle', 'Au contrôle'], ['attente', 'En attente'], ['toutes', 'Toutes (à livrer)'], ['livree', 'Livrées']].map(([k, l]) =>
+      `<button class="${filtre === k ? 'on' : ''}" onclick="filtre='${k}';afficher()">${l}</button>`).join('')}
+      <span class="sub">Tu choisis le statut de chaque commande avec le menu à droite. JPV Stock donne seulement une indication 💡.</span></div>`;
   const liste = CMD.filter(c => (filtre === 'toutes' ? !c.livree : c.statut === filtre) && recherche(c));
   // Livrées : les plus récentes en haut (date de livraison, sinon mois de l'onglet)
   if (filtre === 'livree') liste.sort((a, b) => (b.delai || '').localeCompare(a.delai || '') || MOIS.indexOf(b.mois) - MOIS.indexOf(a.mois) || b.groupe.localeCompare(a.groupe, undefined, {numeric: true}));
   h += liste.map((c, i) => {
     const j = c.livree ? null : c.jours, cls = j == null ? '' : j < 0 ? 'retard' : j <= 7 ? 'proche' : '';
     const delai = c.livree ? 'livrée' : j == null ? 'sans délai' : j < 0 ? `en retard de ${-j} j` : j === 0 ? "aujourd'hui" : `dans ${j} j`;
-    const badge = c.statut === 'complete' ? 'COMPLÈTE' : c.statut === 'livree' ? 'LIVRÉE' : `${c.nb_manque} ligne(s) à compléter`;
     return `<div class="cmd ${c.statut}"><div class="head" onclick="this.parentNode.classList.toggle('open')">
       <div class="rang">${i + 1}</div>
-      <div><div class="client">${c.client || '—'} <span class="sub">${c.cde || ''}</span></div><div class="sub">${c.lignes.length} ligne(s) · ${c.mois} · ${eur(c.ca)}</div></div>
+      <div><div class="client">${c.client || '—'} <span class="sub">VK ${c.vk || ''}</span></div><div class="sub">${c.designation || ''} · ${c.lignes.length} ligne(s) · ${c.mois} · ${eur(c.ca)}</div></div>
       <div class="${cls}">${fmt(c.delai) || '—'}<div class="sub ${cls}">${delai}</div></div>
       <div>${c.heures ? hh(c.heures) + ' h' : '<span class="sub">— h</span>'}</div>
-      <span class="badge">${badge}</span></div>
+      <div class="ind ${c.stock}">${INDIC[c.stock]}</div>
+      ${selStatut(c)}</div>
       <div class="det"><table><tr><th>VK</th><th>Nomenclature</th><th>Désignation</th><th class="n">Qté</th><th>JPV Stock</th></tr>
       ${c.lignes.map(l => `<tr><td>${l.vk}</td><td>${l.nomenc}</td><td>${l.designation || ''}</td><td class="n">${l.qte}</td><td><span class="pt ${l.statut}"></span>${STAT[l.statut]}</td></tr>`).join('')}
-      </table><p><button onclick="livrer('${c.groupe}',${c.statut !== 'livree'})">${c.statut === 'livree' ? 'Remettre en cours' : 'Marquer comme livrée'}</button></p></div></div>`;
+      </table></div></div>`;
   }).join('') || '<p class="sub">Aucune commande dans cette vue.</p>';
   $('vue').innerHTML = h;
 }
@@ -158,19 +168,19 @@ function vuePlan() {
    <div class="kpis"><div class="kpi"><b>${du.length}</b><span>commandes</span></div><div class="kpi"><b>${ouv.length}</b><span>à livrer</span></div>
    <div class="kpi"><b>${hh(totH)} h</b><span>heures du mois</span></div><div class="kpi"><b>${eur(totCA)}</b><span>CA du mois</span></div></div>
    <div class="wrap"><table><thead><tr><th></th><th>Type</th><th>Récep. cde</th><th>AR</th><th>Client</th><th>VK</th><th>CDE</th><th>Nomenc.</th><th class="n">Qté</th>
-   <th>Délai</th><th>Rec. prod</th><th>Désignation</th><th>Étape prod.</th><th class="n">H. unit.</th><th class="n">H. tot.</th><th class="n">C.A.</th><th class="n">C.A. total</th><th>JPV Stock</th></tr></thead><tbody>`;
+   <th>Délai</th><th>Rec. prod</th><th>Désignation</th><th>Étape prod.</th><th class="n">H. unit.</th><th class="n">H. tot.</th><th class="n">C.A.</th><th class="n">C.A. total</th><th>JPV Stock</th><th>Statut</th></tr></thead><tbody>`;
   h += lignes.map(({l, c, i}) => {
     const retard = !c.livree && l.delai && l.delai < iso(new Date());
-    return `<tr class="${i === 0 ? 'g1' : 'opt'} ${l.statut === 'livree' ? 'fait' : ''}">
+    return `<tr class="${i === 0 ? 'g1' : 'opt'} ${c.livree ? 'fait' : ''}">
       <td><span class="exc" style="background:${l.couleur ? '#' + l.couleur : 'transparent'}" title="Couleur dans l'Excel"></span></td>
       <td>${i === 0 ? l.type || '' : ''}</td><td>${fmt(l.date_recep)}</td><td>${fmt(l.date_ar)}</td>
       <td class="c">${i === 0 ? '<b>' + (l.client || '') + '</b>' : ''}</td><td>${l.vk}</td><td>${i === 0 ? l.cde || '' : ''}</td><td>${l.nomenc}</td>
       <td class="n">${l.qte}</td><td class="${retard ? 'retard' : ''}">${fmt(l.delai)}</td><td>${fmt(l.rec_prod) || l.rec_prod || ''}</td>
       <td class="d">${l.designation || ''}</td><td>${l.etape || ''}</td><td class="n">${hh(l.h_unit)}</td><td class="n">${hh(l.h_tot)}</td>
       <td class="n">${l.ca_unit ? l.ca_unit.toLocaleString('fr-FR') : ''}</td><td class="n">${l.ca_total ? l.ca_total.toLocaleString('fr-FR', {maximumFractionDigits: 0}) : ''}</td>
-      <td><span class="pt ${l.statut}"></span>${l.statut === 'livree' ? '✓' : STAT[l.statut]}</td></tr>`;
+      <td><span class="pt ${l.statut}"></span>${l.statut === 'livree' ? '✓' : STAT[l.statut]}</td><td>${i === 0 ? selStatut(c) : ''}</td></tr>`;
   }).join('');
-  h += `</tbody><tfoot><tr><td colspan="14">Total ${mois}</td><td class="n">${hh(totH)}</td><td></td><td class="n">${eur(totCA)}</td><td></td></tr></tfoot></table></div>`;
+  h += `</tbody><tfoot><tr><td colspan="14">Total ${mois}</td><td class="n">${hh(totH)}</td><td></td><td class="n">${eur(totCA)}</td><td></td><td></td></tr></tfoot></table></div>`;
   $('vue').innerHTML = h;
 }
 
@@ -181,7 +191,7 @@ function vueGantt() {
   const emps = G.salaries.filter(s => s.actif).map(s => s.nom);
   let h = `<div class="bar"><button onclick="decaler(-14)">◀</button><button onclick="gDebut=lundi(new Date());rechargerGantt()">Aujourd'hui</button><button onclick="decaler(14)">▶</button>
     <select onchange="gJours=+this.value;rechargerGantt()">${[[28, '4 semaines'], [56, '8 semaines'], [91, '13 semaines'], [182, '6 mois']].map(([v, l]) => `<option value="${v}" ${gJours == v ? 'selected' : ''}>${l}</option>`).join('')}</select>
-    <span class="sub">Seules les commandes <b>complètes</b> peuvent être affectées, <b>c'est toi qui choisis</b> (tableau en dessous). 8,5 h/jour du lundi au jeudi, 5 h le vendredi.</span></div>
+    <span class="sub">Les commandes au statut <b>Complet, En fabrication ou Au contrôle</b> peuvent être affectées : <b>c'est toi qui choisis</b> (tableau en dessous). 8,5 h/jour du lundi au jeudi, 5 h le vendredi.</span></div>
     <div class="chk" style="margin-bottom:10px"><b>Salariés inclus :</b>${G.salaries.map(s => `<label><input type="checkbox" ${s.actif ? 'checked' : ''} onchange="inclure('${s.nom.replace(/'/g, "\\'")}',this.checked)">${NOMS(s.nom)}</label>`).join('')}</div>`;
   // en-tête : mois puis jours
   let mh = '', cur = null, cnt = 0;
@@ -202,16 +212,16 @@ function vueGantt() {
     }).join('');
     h += `<div class="gr"><div class="gn" style="height:${hLigne}px">${NOMS(nom)}<span class="sub">${hh(G.charge[nom]) || 0} h planifiées</span></div><div class="gdays" style="position:relative">${cells}${bars}</div></div>`;
   });
-  h += `</div></div><div class="legend"><span><i style="background:var(--ok)"></i>complète (prête)</span><span><i style="border:2px solid var(--ko)"></i>fini après le délai</span><span><i style="background:var(--cp)"></i>congé payé</span><span><i style="background:var(--abs)"></i>absence</span><span><i style="background:var(--fer)"></i>férié</span><span>📌 salarié choisi à la main</span></div>`;
+  h += `</div></div><div class="legend"><span><i style="background:var(--ok)"></i>Complet</span><span><i style="background:#e08a00"></i>En fabrication</span><span><i style="background:#7a4fd6"></i>Au contrôle</span><span><i style="border:2px solid var(--ko)"></i>fini après le délai</span><span><i style="background:var(--cp)"></i>congé payé</span><span><i style="background:var(--abs)"></i>absence</span><span><i style="background:var(--fer)"></i>férié</span><span>📌 salarié choisi à la main</span></div>`;
   const nbA = G.pretes.filter(x => !x.affectee).length;
-  h += `<h3 style="margin:18px 0 8px">Affectation des commandes complètes <span class="sub">(${nbA} à affecter sur ${G.pretes.length} · clique sur « Affecter » pour choisir qui travaille dessus)</span></h3><div class="wrap"><table>
-    <thead><tr><th>Priorité</th><th>Client</th><th>N° VK</th><th>Désignation</th><th class="n">Heures</th><th>Délai</th><th>Salarié(s)</th><th>Fin prévue</th><th></th></tr></thead><tbody>${G.pretes.map((t, i) => `<tr>
+  h += `<h3 style="margin:18px 0 8px">Affectation des commandes <span class="sub">(${nbA} à affecter sur ${G.pretes.length} · clique sur « Affecter » pour choisir qui travaille dessus)</span></h3><div class="wrap"><table>
+    <thead><tr><th>Priorité</th><th>Client</th><th>N° VK</th><th>Désignation</th><th class="n">Heures</th><th>Délai</th><th>Salarié(s)</th><th>Fin prévue</th><th>Statut</th><th></th></tr></thead><tbody>${G.pretes.map((t, i) => `<tr>
       <td>${i + 1}</td><td><b>${t.client || ''}</b></td><td>${t.vk || ''}</td><td>${t.designation || ''}</td><td class="n">${hh(t.heures_total)}</td><td>${fmt(t.delai)}</td>
       <td>${t.affectee ? '📌 ' + t.affectees.map(p => NOMS(p.nom) + (t.affectees.length > 1 ? ' (' + hh(p.heures) + ' h)' : '')).join(', ') : '<span class="sub">— à affecter —</span>'}</td>
       <td class="${t.retard ? 'retard' : ''}">${t.fin_commande ? fmt(t.fin_commande) + (t.retard ? ' ⚠️' : '') : ''}</td>
-      <td><button class="${t.affectee ? '' : 'on'}" onclick="detail('${t.groupe}')">${t.affectee ? 'Modifier' : 'Affecter'}</button></td></tr>`).join('') || '<tr><td colspan="9" class="sub">Aucune commande complète pour le moment.</td></tr>'}</tbody></table></div>`;
-  if (G.en_attente.length) h += `<h3 style="margin:18px 0 8px">En attente de matériel <span class="sub">(${G.en_attente.length} commande(s) incomplète(s) : affectables dès qu'elles seront complètes)</span></h3><div class="wrap"><table>
-    <thead><tr><th>Client</th><th>N° VK</th><th>Désignation</th><th class="n">Heures</th><th>Délai</th><th>Lignes à compléter</th></tr></thead><tbody>${G.en_attente.map(c => `<tr><td><b>${c.client || ''}</b></td><td>${c.vk || ''}</td><td>${c.designation || ''}</td><td class="n">${hh(c.heures) || '—'}</td><td>${fmt(c.delai)}</td><td>${c.nb_manque} sur ${c.nb_lignes} ${c.pre_affectee ? ' · 📌 salarié déjà choisi' : ''}</td></tr>`).join('')}</tbody></table></div>`;
+      <td>${selStatut(t)}</td><td><button class="${t.affectee ? '' : 'on'}" onclick="detail('${t.groupe}')">${t.affectee ? 'Modifier' : 'Affecter'}</button></td></tr>`).join('') || '<tr><td colspan="10" class="sub">Aucune commande au statut Complet, En fabrication ou Au contrôle. Change le statut dans l onglet Prioritaires.</td></tr>'}</tbody></table></div>`;
+  if (G.en_attente.length) h += `<h3 style="margin:18px 0 8px">En attente <span class="sub">(${G.en_attente.length} commande(s) sans statut : passe-les en « Complet » pour pouvoir les affecter)</span></h3><div class="wrap"><table>
+    <thead><tr><th>Client</th><th>N° VK</th><th>Désignation</th><th class="n">Heures</th><th>Délai</th><th>Indication JPV Stock</th><th>Statut</th></tr></thead><tbody>${G.en_attente.map(c => `<tr><td><b>${c.client || ''}</b></td><td>${c.vk || ''}</td><td>${c.designation || ''}</td><td class="n">${hh(c.heures) || '—'}</td><td>${fmt(c.delai)}</td><td class="ind ${c.stock}">${INDIC[c.stock]}${c.pre_affectee ? ' · 📌 salarié déjà choisi' : ''}</td><td>${selStatut(Object.assign({}, c, {statut: 'attente'}))}</td></tr>`).join('')}</tbody></table></div>`;
   if (G.sans_heures.length) h += `<div class="note"><b>${G.sans_heures.length} commande(s) sans heures dans l'Excel</b> (complètes mais non affectables) : ${G.sans_heures.map(s => s.client + ' ' + (s.vk || '') + (s.designation ? ' ' + s.designation : '')).join(' · ')}</div>`;
   $('vue').innerHTML = h;
 }
@@ -226,7 +236,7 @@ function detail(groupe) {
   $('panel').style.display = 'block';
   $('panel').innerHTML = `<button class="x" onclick="$('panel').style.display='none'">×</button>
     <h3>${c.client} <span class="sub">VK ${p.vk || ''}</span></h3><p class="sub">${p.designation || ''}</p>
-    <p>${hh(p.heures_total)} h au total · ✅ complète</p>
+    <p>${hh(p.heures_total)} h au total · statut : <b>${LIB[p.statut]}</b> · <span class="ind ${p.stock}">${INDIC[p.stock]}</span></p>
     <p>Délai client : <b class="${p.retard ? 'retard' : ''}">${fmt(p.delai) || '—'}</b>${p.fin_commande ? ' · fin prévue : <b class="' + (p.retard ? 'retard' : '') + '">' + fmt(p.fin_commande) + '</b>' + (p.retard ? ' ⚠️ en retard' : '') : ''}</p>
     <p><b>Qui travaille dessus ?</b> <span class="sub">(coche, et indique les heures de chacun, ou laisse vide pour répartir à parts égales)</span></p>
     <div id="aff">${G.salaries.filter(s => s.actif).map(s => `<div style="display:flex;gap:6px;align-items:center;margin:3px 0"><label style="flex:1"><input type="checkbox" value="${s.nom}" ${manuel && mine[s.nom] ? 'checked' : ''}> ${NOMS(s.nom)}</label>
@@ -245,7 +255,6 @@ function appliquer(groupe, noms) { affecter(groupe, noms.map(nom => ({nom, heure
 async function affecter(groupe, repartition) { await post('/api/affectation', {groupe, repartition}); $('panel').style.display = 'none'; rechargerGantt(); }
 
 const post = (u, d) => fetch(u, {method: 'POST', body: JSON.stringify(d)});
-async function livrer(groupe, livree) { await post('/api/livree', {groupe, livree}); charger(); }
 $('q').oninput = afficher;
 charger(); setInterval(() => { if (onglet !== 'gantt') charger(); }, 60000);
 </script>

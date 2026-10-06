@@ -4,7 +4,7 @@
   (le statut du stock est lu automatiquement dans JPV Stock, en lecture seule)
   GET  /api/gantt?debut=AAAA-MM-JJ&jours=56 -> planning des salariés
   POST /api/affectation / /api/employe -> choix du salarié d'une commande / salarié inclus ou non
-  POST /api/livree                 -> {groupe, livree:true|false}
+  POST /api/statut                 -> {groupe, statut: complet|fabrication|controle|livree|null}  (statut choisi à la main)
 """
 import json, pathlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -63,9 +63,13 @@ class H(BaseHTTPRequestHandler):
                 d = json.loads(corps)
                 con.execute("UPDATE employes SET actif=? WHERE nom=?", (1 if d["actif"] else 0, d["nom"]))
                 con.commit(); return self._send(200, {"ok": True})
-            if self.path == "/api/livree":
+            if self.path == "/api/statut":           # {groupe, statut: complet|fabrication|controle|livree|null}
                 d = json.loads(corps)
-                con.execute("UPDATE lignes SET force_etat=? WHERE groupe=?", ("livree" if d["livree"] else "encours", d["groupe"]))
+                if d.get("statut"):
+                    if d["statut"] not in ("complet", "fabrication", "controle", "livree"): raise ValueError("statut inconnu")
+                    con.execute("INSERT OR REPLACE INTO statuts VALUES (?,?)", (d["groupe"], d["statut"]))
+                else:
+                    con.execute("DELETE FROM statuts WHERE groupe=?", (d["groupe"],))
                 con.commit(); return self._send(200, {"ok": True})
         except Exception as e:
             return self._send(400, {"erreur": str(e)})

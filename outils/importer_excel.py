@@ -33,13 +33,13 @@ def lire(chemin):
         if ws["B1"].value != "DATE RECEP CDE":      # ignore l'onglet CP (planning des salariés)
             continue
         client = cde = type_ = None
-        groupe = 0
+        groupe = f"{ws.title}-0"
         for r in range(3, ws.max_row + 1):
             vk, nomenc, qte = val(ws, "E", r), val(ws, "G", r), num(val(ws, "H", r))
             if not vk or not nomenc or qte is None:
                 continue
             if val(ws, "D", r):                      # nouvelle commande (ligne principale)
-                client, cde, groupe = val(ws, "D", r), val(ws, "F", r), groupe + 1
+                client, cde, groupe = val(ws, "D", r), val(ws, "F", r), f"{ws.title}-{vk}"
             if val(ws, "A", r):
                 type_ = val(ws, "A", r)
             elif val(ws, "D", r):
@@ -56,7 +56,7 @@ def lire(chemin):
             if ca_total is None and ca_unit is not None:
                 ca_total = ca_unit * qte
             lignes.append(dict(
-                vk=str(vk), mois=ws.title, ordre=idx * 10000 + r, groupe=f"{ws.title}-{groupe}",
+                vk=str(vk), mois=ws.title, ordre=idx * 10000 + r, groupe=groupe,
                 client=client, cde=str(cde) if cde else None, type=type_,
                 nomenc=str(nomenc), designation=val(ws, "K", r), qte=qte,
                 date_recep=val(ws, "B", r), date_ar=val(ws, "C", r),
