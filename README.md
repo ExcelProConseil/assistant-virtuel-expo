@@ -11,4 +11,4 @@ Logiciel local : base SQLite + page web qui liste les commandes par priorité et
 4. JPV-AGENT met à jour le planning Excel : le serveur le relit automatiquement dès qu'il change (chemin modifiable avec `JPV_PLANNING`). Lecture sur une copie : fonctionne même si l'Excel est ouvert.
 5. Le stock est lu automatiquement dans JPV Stock (`donnees/jpv_stock.db`, en lecture seule) : le numéro de commande de JPV Stock = le VK du planning ; `STOCK OK` = ligne prête, `STOCK PARTIEL` = manque, `EXPEDIEE` = livrée. Chemin modifiable avec la variable `JPV_STOCK_DB`.
 
-**Lancer tout d'un coup :** double-cliquer sur `LANCER_JPV_COMMANDES.bat` (démarre le serveur, ouvre la page, puis lance JPV-AGENT).
+**Bouton sur le Bureau :** double-cliquer une fois sur `CREER_RACCOURCI_BUREAU.bat`, puis utiliser le bouton « JPV Commandes » (démarre le logiciel et ouvre la page). `LANCER_JPV_COMMANDES_ET_AGENTS.bat` lance en plus le menu JPV-AGENT.
