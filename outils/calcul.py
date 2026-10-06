@@ -189,7 +189,7 @@ def gantt(con, cmds, debut, nb_jours, aujourdhui=None, horizon=400):
 
 
 # ------------------------------------------------------------------ rappels
-def rappels(cmds, g, aujourdhui=None, seuil_jours=3):
+def rappels(cmds, g, aujourdhui=None, seuil_jours=3, retours=()):
     """Liste des alertes. niveau « rouge » = à traiter, « orange » = à surveiller."""
     auj = aujourdhui or dt.date.today()
     out = []
@@ -210,5 +210,11 @@ def rappels(cmds, g, aujourdhui=None, seuil_jours=3):
             ajoute("orange", "affecter", f"{nom} : statut {dict(complet='Complet', fabrication='En fabrication', controle='Au contrôle')[c['statut']]} mais aucun salarié affecté")
         if c["heures"] <= 0:
             ajoute("orange", "heures", f"{nom} : pas d'heures renseignées dans l'Excel")
+    par = {c["groupe"]: c for c in cmds}
+    for r in retours:                                           # retours des salariés (tablette) pas encore traités
+        c = par.get(r["groupe"], {})
+        lib = dict(probleme="Problème", modification="Modification", info="Info")[r["type"]]
+        out.append(dict(niveau="rouge" if r["type"] == "probleme" else "orange", cle=f'retour:{r["id"]}', groupe=r["groupe"], client=c.get("client"), vk=c.get("vk"),
+                        texte=f'{lib} signalé par {r["nom"].title()} sur {c.get("client") or ""} {c.get("vk") or ""} : {r["texte"][:90]}'))
     out.sort(key=lambda r: (r["niveau"] != "rouge", r["texte"]))
     return out

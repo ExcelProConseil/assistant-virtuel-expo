@@ -22,6 +22,12 @@ def connecter():
     CREATE TABLE IF NOT EXISTS statuts (groupe TEXT PRIMARY KEY, statut TEXT);   -- statut choisi à la main
     CREATE TABLE IF NOT EXISTS demarrages (groupe TEXT PRIMARY KEY, jour TEXT);   -- date de début choisie à la main
     CREATE TABLE IF NOT EXISTS etapes (groupe TEXT, etape TEXT, fait INTEGER, PRIMARY KEY (groupe, etape));   -- étapes cochées à la main
+    -- Application tablette : temps réalisés, chrono en cours, étapes terminées, retours des salariés
+    CREATE TABLE IF NOT EXISTS temps (id INTEGER PRIMARY KEY AUTOINCREMENT, groupe TEXT, etape TEXT, nom TEXT, minutes REAL, debut TEXT, fin TEXT, source TEXT, cree TEXT);
+    CREATE TABLE IF NOT EXISTS chronos (nom TEXT PRIMARY KEY, groupe TEXT, etape TEXT, debut TEXT);
+    CREATE TABLE IF NOT EXISTS etats_taches (groupe TEXT, etape TEXT, nom TEXT, termine INTEGER, maj TEXT, PRIMARY KEY (groupe, etape, nom));
+    CREATE TABLE IF NOT EXISTS retours (id INTEGER PRIMARY KEY AUTOINCREMENT, groupe TEXT, etape TEXT, nom TEXT, type TEXT, texte TEXT, cree TEXT, traite INTEGER DEFAULT 0);
+    CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, nom TEXT, cree TEXT);
     CREATE TABLE IF NOT EXISTS meta (cle TEXT PRIMARY KEY, valeur TEXT);
     CREATE TABLE IF NOT EXISTS employes (nom TEXT PRIMARY KEY, ordre INTEGER, actif INTEGER DEFAULT 1);
     CREATE TABLE IF NOT EXISTS periodes (id INTEGER PRIMARY KEY AUTOINCREMENT, nom TEXT, debut TEXT, fin TEXT, type TEXT);   -- CFA, absences saisies à la main
@@ -33,7 +39,7 @@ def connecter():
         if c not in existantes and c != "vk":
             con.execute(f"ALTER TABLE lignes ADD COLUMN {c} {t}")
     cols_e = {r[1] for r in con.execute("PRAGMA table_info(employes)")}
-    for c, t in (("h_semaine", "REAL DEFAULT 39"), ("apprenti", "INTEGER DEFAULT 0"), ("parti", "INTEGER DEFAULT 0")):
+    for c, t in (("h_semaine", "REAL DEFAULT 39"), ("apprenti", "INTEGER DEFAULT 0"), ("parti", "INTEGER DEFAULT 0"), ("pin", "TEXT")):
         if c not in cols_e:
             con.execute(f"ALTER TABLE employes ADD COLUMN {c} {t}")
     if not con.execute("SELECT 1 FROM meta WHERE cle='salaries_v2'").fetchone():            # réglages de départ, une seule fois

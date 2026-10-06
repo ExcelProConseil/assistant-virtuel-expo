@@ -7,23 +7,59 @@
   POST /api/demarrage              -> {groupe, jour}  (date de début choisie à la main)
   POST /api/statut                 -> {groupe, statut: complet|fabrication|controle|livree|null}  (statut choisi à la main)
 """
-import json, pathlib
+import json, pathlib, socket
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from base import connecter, upsert_lignes
 from calcul import commandes, gantt, rappels
+import tablette
 import datetime as dt, urllib.parse
 from sync_stock import synchroniser
 from importer_excel import reimporter_si_modifie, PLANNING
 
 WEB = pathlib.Path(__file__).resolve().parent.parent / "web"
 
+def ip_locale():
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); s.connect(("10.255.255.255", 1)); ip = s.getsockname()[0]; s.close()
+        return ip
+    except Exception:
+        return "IP-DU-PC"
+
 class H(BaseHTTPRequestHandler):
+    def _local(self):
+        return self.client_address[0] in ("127.0.0.1", "::1")
+
+    def _interdit(self, chemin):
+        """Depuis le réseau (tablettes) : seulement l'appli tablette. Tout le reste est réservé à ce PC."""
+        if self._local(): return False
+        return not (chemin in ("/tablette", "/tablette.html") or chemin.startswith("/api/tablette/"))
+
     def _send(self, code, body, ctype="application/json"):
         data = body if isinstance(body, bytes) else json.dumps(body, ensure_ascii=False).encode()
         self.send_response(code); self.send_header("Content-Type", ctype + "; charset=utf-8")
         self.send_header("Content-Length", str(len(data))); self.end_headers(); self.wfile.write(data)
 
+    def _nom_tablette(self, con):
+        return tablette.salarie_du_token(con, self.headers.get("X-Token"))
+
     def do_GET(self):
+        chemin = self.path.split("?")[0]
+        if self._interdit(chemin): return self._send(403, {"erreur": "accès réservé au PC"})
+        if chemin in ("/tablette", "/tablette.html"):
+            return self._send(200, (WEB / "tablette.html").read_bytes(), "text/html")
+        if chemin.startswith("/api/tablette/"):
+            con = connecter()
+            try:
+                if chemin == "/api/tablette/salaries": return self._send(200, {"salaries": tablette.salaries_tablette(con)})
+                if chemin == "/api/tablette/taches": return self._send(200, tablette.taches_du_salarie(con, self._nom_tablette(con)))
+            except PermissionError as e:
+                return self._send(401, {"erreur": str(e)})
+        if chemin == "/api/infos":
+            return self._send(200, {"ip": ip_locale(), "port": 8000, "url_tablette": f"http://{ip_locale()}:8000/tablette"})
+        if chemin == "/api/suivi":
+            return self._send(200, tablette.suivi(connecter()))
+        if chemin == "/api/export_temps.csv":
+            return self._send(200, tablette.export_csv(connecter()), "text/csv")
         if self.path.startswith("/api/commandes"):
             con = connecter()
             erreur = None
@@ -40,10 +76,10 @@ class H(BaseHTTPRequestHandler):
         if self.path.startswith("/api/rappels"):
             con = connecter(); cmds, _ = commandes(con)
             g = gantt(con, cmds, dt.date.today(), 1)
-            return self._send(200, {"rappels": rappels(cmds, g)})
+            return self._send(200, {"rappels": rappels(cmds, g, retours=tablette.retours_non_traites(con))})
         if self.path.startswith("/api/salaries"):
             con = connecter()
-            sal = [dict(r) for r in con.execute("SELECT nom, actif, h_semaine, apprenti, parti FROM employes ORDER BY ordre")]
+            sal = [dict(r) for r in con.execute("SELECT nom, actif, h_semaine, apprenti, parti, pin FROM employes ORDER BY ordre")]
             for s_ in sal:
                 s_["periodes"] = [dict(r) for r in con.execute("SELECT id, debut, fin, type FROM periodes WHERE nom=? ORDER BY debut", (s_["nom"],))]
             return self._send(200, {"salaries": sal})
@@ -59,9 +95,27 @@ class H(BaseHTTPRequestHandler):
         self._send(404, {"erreur": "introuvable"})
 
     def do_POST(self):
+        chemin = self.path.split("?")[0]
+        if self._interdit(chemin):
+            self.rfile.read(int(self.headers.get("Content-Length", 0))); return self._send(403, {"erreur": "accès réservé au PC"})
         corps = self.rfile.read(int(self.headers.get("Content-Length", 0))).decode("utf-8-sig")
         con = connecter()
         try:
+            if chemin == "/api/tablette/connexion":
+                d = json.loads(corps)
+                return self._send(200, {"token": tablette.connexion(con, d["nom"], d.get("pin")), "nom": d["nom"]})
+            if chemin.startswith("/api/tablette/"):
+                nom = self._nom_tablette(con); d = json.loads(corps)
+                if chemin == "/api/tablette/chrono": tablette.chrono(con, nom, d["action"], d["groupe"], d["etape"])
+                elif chemin == "/api/tablette/temps": tablette.ajouter_temps(con, nom, d["groupe"], d["etape"], d["minutes"])
+                elif chemin == "/api/tablette/temps_supprimer": tablette.supprimer_temps(con, nom, d["id"])
+                elif chemin == "/api/tablette/termine": tablette.terminer(con, nom, d["groupe"], d["etape"], bool(d["termine"]))
+                elif chemin == "/api/tablette/retour": tablette.retour(con, nom, d["groupe"], d["etape"], d["type"], d["texte"])
+                else: return self._send(404, {"erreur": "introuvable"})
+                return self._send(200, {"ok": True})
+            if chemin == "/api/retour_traite":       # {id, traite}
+                d = json.loads(corps); con.execute("UPDATE retours SET traite=? WHERE id=?", (1 if d["traite"] else 0, d["id"])); con.commit()
+                return self._send(200, {"ok": True})
             if self.path == "/api/agent/commandes":
                 d = json.loads(corps); d = d["lignes"] if isinstance(d, dict) else d
                 upsert_lignes(con, d, source="agent"); return self._send(200, {"ok": len(d)})
@@ -74,7 +128,7 @@ class H(BaseHTTPRequestHandler):
                 con.commit(); return self._send(200, {"ok": True})
             if self.path == "/api/salarie":          # {nom, actif?, h_semaine?, apprenti?, parti?}
                 d = json.loads(corps)
-                for k in ("actif", "h_semaine", "apprenti", "parti"):
+                for k in ("actif", "h_semaine", "apprenti", "parti", "pin"):
                     if k in d: con.execute(f"UPDATE employes SET {k}=? WHERE nom=?", (d[k], d["nom"]))
                 con.commit(); return self._send(200, {"ok": True})
             if self.path == "/api/periode":          # {nom, debut, fin, type: cfa|absence}
@@ -117,10 +171,13 @@ class H(BaseHTTPRequestHandler):
                 else:
                     con.execute("DELETE FROM statuts WHERE groupe=?", (d["groupe"],))
                 con.commit(); return self._send(200, {"ok": True})
+        except PermissionError as e:
+            return self._send(401, {"erreur": str(e)})
         except Exception as e:
             return self._send(400, {"erreur": str(e)})
         self._send(404, {"erreur": "introuvable"})
 
 if __name__ == "__main__":
     print("JPV Commandes sur http://localhost:8000")
-    ThreadingHTTPServer(("127.0.0.1", 8000), H).serve_forever()
+    print(f"Tablettes : http://{ip_locale()}:8000/tablette")
+    ThreadingHTTPServer(("0.0.0.0", 8000), H).serve_forever()

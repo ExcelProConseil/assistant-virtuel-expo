@@ -139,14 +139,14 @@ async function chargerGantt() {
 }
 
 function afficher() {
-  $('nav').innerHTML = [['prio', 'Prioritaires'], ['plan', 'Planning'], ['gantt', 'Gantt salariés'], ['sal', '👥 Salariés'], ['rapp', '🔔 Rappels']].map(([k, l]) =>
+  $('nav').innerHTML = [['prio', 'Prioritaires'], ['plan', 'Planning'], ['gantt', 'Gantt salariés'], ['suivi', '📱 Suivi atelier'], ['sal', '👥 Salariés'], ['rapp', '🔔 Rappels']].map(([k, l]) =>
     `<button class="${onglet === k ? 'on' : ''}" onclick="choisir('${k}')">${l}${k === 'rapp' && RAPP.length ? '<span class="badgeN">' + RAPP.filter(x => x.niveau === 'rouge').length + '</span>' : ''}</button>`).join('');
   $('lu').innerHTML = (planningLu ? 'Planning Excel relu le ' + fmt(planningLu.slice(0, 10)) + ' à ' + planningLu.slice(11, 16) + ' · ' : '') + '<button onclick="relire()">↻ Relire l\'Excel maintenant</button>';
   $('note').innerHTML = (erreurPlan ? `<div class="note">⚠️ ${erreurPlan}</div>` : '') + (CMD.length === 0 && !erreurPlan ? '<div class="note">Aucune commande : le planning Excel n\'a pas encore été lu.</div>' : '') + (stockOk ? '' :
     '<div class="note">⚠️ JPV Stock est introuvable : aucune commande ne peut être déclarée complète. Vérifie que le dossier C:\\Users\\cmore\\JPV_STOCK existe.</div>');
-  ({prio: vuePrio, plan: vuePlan, gantt: vueGantt, rapp: vueRapp, sal: vueSal})[onglet]();
+  ({prio: vuePrio, plan: vuePlan, gantt: vueGantt, rapp: vueRapp, sal: vueSal, suivi: vueSuivi})[onglet]();
 }
-async function choisir(k) { onglet = k; if (k === 'gantt') await chargerGantt(); if (k === 'sal') await chargerSal(); afficher(); }
+async function choisir(k) { onglet = k; if (k === 'gantt') await chargerGantt(); if (k === 'sal') await chargerSal(); if (k === 'suivi') await chargerSuivi(); afficher(); }
 
 const recherche = c => { const q = $('q').value.toLowerCase(); return !q || JSON.stringify([c.client, c.cde, c.lignes.map(l => [l.vk, l.nomenc, l.designation])]).toLowerCase().includes(q); };
 
@@ -301,6 +301,26 @@ function enregistrer() { affecter(LIG_G, LIG.filter(l => l.nom)); }
 function appliquer(groupe, noms) { affecter(groupe, noms.map(nom => ({etape: 'toute', nom, heures: null}))); }
 async function affecter(groupe, lignes) { await post('/api/affectation', {groupe, lignes}); $('panel').style.display = 'none'; rechargerGantt(); }
 
+/* ---------------------------------------------------------------- Suivi atelier (tablettes) */
+let SUIVI = null, INFOS = null;
+async function chargerSuivi() { [SUIVI, INFOS] = await Promise.all([fetch('/api/suivi').then(r => r.json()), fetch('/api/infos').then(r => r.json())]); }
+function vueSuivi() {
+  if (!SUIVI) { $('vue').innerHTML = '<p class="sub">Chargement…</p>'; return; }
+  const L = SUIVI.lignes, R = SUIVI.retours, aTraiter = R.filter(r => !r.traite);
+  const ICO = {probleme: '⚠️ Problème', modification: '✏️ Modification', info: 'ℹ️ Info'};
+  let h = `<div class="note" style="border-color:var(--acc);background:var(--card)">📱 <b>Adresse à ouvrir sur les tablettes :</b> <code style="font-size:15px">${INFOS.url_tablette}</code>
+    <div class="sub">Le PC doit être allumé avec JPV Commandes lancé, et les tablettes sur le même réseau (Wi-Fi de l'atelier). Les codes personnels des salariés se règlent dans l'onglet 👥 Salariés.</div></div>
+    <div class="bar"><a href="/api/export_temps.csv" download="temps_JPV.csv"><button>⬇ Exporter les temps (CSV pour Excel)</button></a></div>
+    <h3 style="margin:6px 0 8px">💬 Retours des salariés <span class="sub">(${aTraiter.length} à traiter)</span></h3>`;
+  h += R.map(r => `<div class="rap ${r.traite ? '' : (r.type === 'probleme' ? 'rouge' : '')}" style="${r.traite ? 'opacity:.6' : ''}"><div style="flex:1"><b>${ICO[r.type]}</b> · ${r.client} <span class="sub">VK ${r.vk}</span> · ${NOMS(r.nom)} · ${r.etape_lib === 'Toute la commande' ? 'fabrication' : r.etape_lib} <span class="sub">${fmt(r.cree.slice(0, 10))} ${r.cree.slice(11, 16)}</span><div>${r.texte.replace(/</g, '&lt;')}</div></div>
+    <button onclick="traiterRetour(${r.id},${!r.traite})">${r.traite ? 'Rouvrir' : '✔ Traité'}</button></div>`).join('') || '<p class="sub">Aucun retour pour le moment.</p>';
+  h += `<h3 style="margin:18px 0 8px">⏱ Temps prévus et réalisés</h3><div class="wrap"><table><thead><tr><th>Commande</th><th>Désignation</th><th>Étape</th><th>Salarié</th><th class="n">Prévu (h)</th><th class="n">Réalisé (h)</th><th class="n">Écart</th><th>État</th></tr></thead><tbody>
+    ${L.map(l => { const ec = l.prevu != null ? l.realise - l.prevu : null; return `<tr><td><b>${l.client}</b> <span class="sub">${l.vk}</span></td><td>${l.designation || ''}</td><td>${l.etape === 'toute' ? 'Fabrication' : l.etape_lib}</td><td>${NOMS(l.nom)}</td>
+      <td class="n">${l.prevu != null ? hh(l.prevu) : '—'}</td><td class="n">${hh(l.realise) || 0}</td><td class="n ${ec > 0 ? 'retard' : ''}">${ec == null ? '' : (ec > 0 ? '+' : '') + (hh(ec) || 0)}</td><td>${l.en_cours ? '⏱ en cours' : l.termine ? '✅ terminée' : ''}</td></tr>`; }).join('') || '<tr><td colspan="8" class="sub">Aucune tâche affectée.</td></tr>'}</tbody></table></div>`;
+  $('vue').innerHTML = h;
+}
+async function traiterRetour(id, traite) { await post('/api/retour_traite', {id, traite}); await chargerSuivi(); try { RAPP = (await (await fetch('/api/rappels')).json()).rappels; } catch (e) {} afficher(); }
+
 /* ---------------------------------------------------------------- Salariés */
 let SAL = [];
 async function chargerSal() { SAL = (await (await fetch('/api/salaries')).json()).salaries; }
@@ -308,11 +328,12 @@ const TYPES_PER = {cfa: 'CFA', absence: 'Absence', cp: 'Congé payé'};
 function vueSal() {
   const actifs = SAL.filter(s => !s.parti), partis = SAL.filter(s => s.parti);
   let h = `<p class="sub">Règle les salariés pris en compte dans le Gantt, leurs heures par semaine, et saisis ici les <b>semaines de CFA</b> (apprenti), absences et congés. Les jours fériés sont déjà gérés.</p>
-  <div class="wrap"><table><thead><tr><th>Salarié</th><th>Dans le Gantt</th><th>Heures / semaine</th><th>Apprenti</th><th>Périodes (CFA, absences, congés)</th><th></th></tr></thead><tbody>`;
+  <div class="wrap"><table><thead><tr><th>Salarié</th><th>Dans le Gantt</th><th>Heures / semaine</th><th>Apprenti</th><th>Code tablette</th><th>Périodes (CFA, absences, congés)</th><th></th></tr></thead><tbody>`;
   h += actifs.map(s => { const i = SAL.indexOf(s); return `<tr><td><b>${NOMS(s.nom)}</b></td>
     <td><input type="checkbox" ${s.actif ? 'checked' : ''} onchange="majSal(${i},'actif',this.checked?1:0)"></td>
     <td><input type="number" min="1" max="60" step="0.5" value="${s.h_semaine}" style="width:70px" onchange="majSal(${i},'h_semaine',parseFloat(this.value)||39)"> h <span class="sub">(${hh((s.h_semaine - 5) / 4)} h du lun. au jeu., 5 h le ven.)</span></td>
     <td><input type="checkbox" ${s.apprenti ? 'checked' : ''} onchange="majSal(${i},'apprenti',this.checked?1:0)"></td>
+    <td><input type="text" inputmode="numeric" maxlength="8" placeholder="aucun" value="${s.pin || ''}" style="width:84px" onchange="majSal(${i},'pin',this.value.trim())"></td>
     <td style="white-space:normal;min-width:330px">${s.periodes.map(p => `<span class="sub" style="display:inline-block;margin:0 8px 3px 0;padding:2px 8px;border:1px solid var(--line);border-radius:99px"><b>${TYPES_PER[p.type] || p.type}</b> ${fmt(p.debut)} → ${fmt(p.fin)} <a href="#" onclick="supprimerPeriode(${p.id});return false" title="Supprimer">✕</a></span>`).join('')}
       <div style="margin-top:4px"><select id="pt_${i}">${Object.entries(TYPES_PER).map(([k, l]) => `<option value="${k}" ${s.apprenti && k === 'cfa' ? 'selected' : ''}>${l}</option>`).join('')}</select>
       du <input type="date" id="pd_${i}" style="width:128px"> au <input type="date" id="pf_${i}" style="width:128px"> <button onclick="ajouterPeriode(${i})">+ Ajouter</button></div></td>

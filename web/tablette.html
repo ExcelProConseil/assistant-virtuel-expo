@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<meta name="mobile-web-app-capable" content="yes">
+<title>JPV Atelier</title>
+<style>
+:root{--bg:#f2f4f8;--card:#fff;--txt:#17202f;--mut:#667089;--line:#dde2ea;--acc:#2f5bea;--ok:#1f9d55;--ko:#d9534f;--warn:#e08a00;--vio:#7a4fd6}
+@media (prefers-color-scheme:dark){:root{--bg:#12151c;--card:#1d2330;--txt:#eef1f7;--mut:#9aa3b8;--line:#2d3548}}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--bg);color:var(--txt);font:19px/1.35 system-ui,-apple-system,Segoe UI,sans-serif;user-select:none}
+header{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:12px;padding:12px 16px;background:var(--acc);color:#fff}
+header h1{flex:1;margin:0;font-size:22px}
+header button{background:rgba(255,255,255,.2);color:#fff;border:0;border-radius:12px;padding:10px 16px;font:inherit;font-size:17px}
+main{padding:14px 16px 90px;max-width:900px;margin:auto}
+button{font:inherit;cursor:pointer}
+.tuiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px}
+.tuile{background:var(--card);border:2px solid var(--line);border-radius:18px;padding:26px 14px;font-size:24px;font-weight:700;color:var(--txt);text-align:center}
+.tuile small{display:block;font-weight:400;color:var(--mut);font-size:15px;margin-top:4px}
+.carte{background:var(--card);border:1px solid var(--line);border-left:8px solid var(--mut);border-radius:16px;padding:14px 16px;margin-bottom:12px}
+.carte.complet{border-left-color:var(--ok)}.carte.fabrication{border-left-color:var(--warn)}.carte.controle{border-left-color:var(--vio)}
+.carte.encours{outline:3px solid var(--ok)}.carte.fini{opacity:.6}
+.titre{font-size:23px;font-weight:700}.sub{color:var(--mut);font-size:16px}
+.pastille{display:inline-block;background:var(--acc);color:#fff;border-radius:99px;padding:2px 12px;font-size:15px;font-weight:600;margin-right:6px}
+.barre{height:12px;border-radius:99px;background:var(--line);overflow:hidden;margin:8px 0 4px}.barre i{display:block;height:100%;background:var(--ok)}.barre i.depasse{background:var(--ko)}
+.retard{color:var(--ko);font-weight:700}.proche{color:var(--warn);font-weight:700}
+.panneau{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:14px}
+.panneau h3{margin:0 0 10px;font-size:20px}
+.gros{width:100%;padding:20px;border:0;border-radius:16px;font-size:24px;font-weight:700;color:#fff;background:var(--acc)}
+.gros.vert{background:var(--ok)}.gros.rouge{background:var(--ko)}.gros.gris{background:#6b7385}
+.chrono{font-size:54px;font-weight:700;text-align:center;font-variant-numeric:tabular-nums;margin:4px 0 12px}
+.rang{display:flex;gap:10px;flex-wrap:wrap}
+.rang button{flex:1;min-width:90px;padding:16px 10px;border-radius:14px;border:2px solid var(--line);background:var(--card);color:var(--txt);font-size:19px;font-weight:600}
+.rang button.on{border-color:var(--acc);background:var(--acc);color:#fff}
+input,textarea,select{font:inherit;font-size:20px;padding:12px;border:2px solid var(--line);border-radius:12px;background:var(--card);color:var(--txt);user-select:text}
+textarea{width:100%;min-height:110px;margin:10px 0}
+table{width:100%;border-collapse:collapse;font-size:17px}td,th{padding:7px 6px;border-bottom:1px solid var(--line);text-align:left}th{color:var(--mut);font-weight:600}
+.entree{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);font-size:17px}.entree span:first-child{flex:1}
+.x{background:none;border:2px solid var(--line);border-radius:10px;padding:6px 12px;color:var(--ko);font-size:18px}
+.bandeau{background:var(--ok);color:#fff;border-radius:14px;padding:12px 16px;margin-bottom:14px;font-weight:600}
+.retourC{padding:10px 12px;border-radius:12px;background:var(--bg);margin-top:8px;font-size:17px}
+.clavier{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;max-width:380px;margin:18px auto}
+.clavier button{padding:22px;font-size:30px;border-radius:16px;border:2px solid var(--line);background:var(--card);color:var(--txt)}
+.points{text-align:center;font-size:38px;letter-spacing:12px;height:50px}
+.msg{text-align:center;color:var(--ko);min-height:26px}
+</style>
+</head>
+<body>
+<header><h1 id="titre">JPV Atelier</h1><button id="btnHaut" style="display:none"></button></header>
+<main id="app"></main>
+<script>
+let token = localStorage.getItem('jpv_token'), nom = localStorage.getItem('jpv_nom'), D = null, decalage = 0;
+let vue = 'liste', cle = null, typeRetour = 'probleme', brouillon = '', pin = '', salaries = [];
+const $ = id => document.getElementById(id);
+const esc = t => String(t == null ? '' : t).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+const NOM = n => n.toLowerCase().replace(/(^|\s)\S/g, c => c.toUpperCase());
+const fmt = d => d ? d.split('-').reverse().join('/') : '—';
+const hm = m => { m = Math.round(m); const h = Math.floor(m / 60), r = m % 60; return h ? `${h} h ${String(r).padStart(2, '0')}` : `${r} min`; };
+const hh = h => (Math.round(h * 100) / 100).toLocaleString('fr-FR');
+
+async function api(chemin, corps) {
+  const r = await fetch(chemin, {method: corps === undefined ? 'GET' : 'POST', headers: {'X-Token': token || '', 'Content-Type': 'application/json'}, body: corps === undefined ? undefined : JSON.stringify(corps)});
+  if (r.status === 401 && token) { deconnecter(); throw new Error('Session expirée'); }
+  const j = await r.json(); if (!r.ok) throw new Error(j.erreur || 'Erreur'); return j;
+}
+function deconnecter() { token = nom = null; localStorage.removeItem('jpv_token'); localStorage.removeItem('jpv_nom'); D = null; accueil(); }
+
+/* -------------------------------------------------- accueil + code */
+async function accueil() {
+  vue = 'accueil'; haut('JPV Atelier', null);
+  salaries = (await api('/api/tablette/salaries')).salaries;
+  $('app').innerHTML = `<p class="sub" style="text-align:center;font-size:20px">Qui es-tu ?</p><div class="tuiles">${salaries.map((s, i) => `<button class="tuile" onclick="choisir(${i})">${esc(NOM(s.nom))}${s.pin ? '<small>🔒 code</small>' : ''}</button>`).join('')}</div>`;
+}
+function choisir(i) { if (salaries[i].pin) { pin = ''; clavier(salaries[i].nom); } else connecter(salaries[i].nom, ''); }
+function clavier(n, erreur) {
+  haut(NOM(n), 'Annuler', accueil);
+  $('app').innerHTML = `<p class="sub" style="text-align:center">Entre ton code</p><div class="points">${'●'.repeat(pin.length)}${'○'.repeat(Math.max(0, 4 - pin.length))}</div><div class="msg">${erreur || ''}</div>
+  <div class="clavier">${[1, 2, 3, 4, 5, 6, 7, 8, 9, '⌫', 0, 'OK'].map(k => `<button onclick="touche('${k}','${n.replace(/'/g, "\\'")}')">${k}</button>`).join('')}</div>`;
+}
+function touche(k, n) { if (k === '⌫') pin = pin.slice(0, -1); else if (k === 'OK') return connecter(n, pin); else if (pin.length < 8) pin += k; clavier(n); }
+async function connecter(n, code) {
+  try { const r = await api('/api/tablette/connexion', {nom: n, pin: code}); token = r.token; nom = r.nom; localStorage.setItem('jpv_token', token); localStorage.setItem('jpv_nom', nom); pin = ''; await liste(); }
+  catch (e) { pin = ''; clavier(n, e.message); }
+}
+
+/* -------------------------------------------------- liste des tâches */
+function haut(t, bouton, action) { $('titre').textContent = t; const b = $('btnHaut'); b.style.display = bouton ? '' : 'none'; if (bouton) { b.textContent = bouton; b.onclick = action; } }
+async function charger() { D = await api('/api/tablette/taches'); decalage = D.serveur_epoch - Date.now() / 1000; }
+const cleDe = t => t.groupe + '|' + t.etape;
+async function liste() {
+  vue = 'liste'; cle = null;
+  try { await charger(); } catch (e) { return; }
+  haut('Bonjour ' + NOM(nom).split(' ')[0], 'Changer', deconnecter);
+  const a = D.taches.filter(t => !t.termine), f = D.taches.filter(t => t.termine);
+  const carte = t => {
+    const prevu = t.heures_prevues * 60, pc = Math.min(100, prevu ? t.minutes / prevu * 100 : 0);
+    const dl = t.delai ? Math.round((new Date(t.delai) - new Date(new Date().toDateString())) / 864e5) : null;
+    return `<div class="carte ${t.statut} ${t.en_cours ? 'encours' : ''} ${t.termine ? 'fini' : ''}" onclick="detail('${cleDe(t)}')">
+      <div class="titre">${esc(t.client)} <span class="sub">VK ${esc(t.vk)}</span></div><div>${esc(t.designation)}</div>
+      <div style="margin-top:6px"><span class="pastille">${esc(t.etape === 'toute' ? 'Fabrication' : t.etape_lib)}</span>${t.en_cours ? '<span class="pastille" style="background:var(--ok)">⏱ en cours</span>' : ''}${t.retours.some(r => !r.traite) ? '<span class="pastille" style="background:var(--warn)">💬 retour envoyé</span>' : ''}</div>
+      <div class="barre"><i class="${t.minutes > prevu ? 'depasse' : ''}" style="width:${pc}%"></i></div>
+      <div class="sub">${hm(t.minutes)} faites sur ${hh(t.heures_prevues)} h prévues · prévu du ${fmt(t.debut)} au ${fmt(t.fin)}</div>
+      ${t.delai ? `<div class="${dl < 0 ? 'retard' : dl <= 3 ? 'proche' : 'sub'}">Délai client : ${fmt(t.delai)}${dl < 0 ? ' (dépassé)' : ''}</div>` : ''}</div>`; };
+  $('app').innerHTML = (D.chrono ? `<div class="bandeau" onclick="detail('${D.chrono.groupe}|${D.chrono.etape}')">⏱ Chrono en cours — touche pour y aller</div>` : '') +
+    (a.length ? a.map(carte).join('') : '<div class="panneau" style="text-align:center">Aucune tâche à faire pour le moment 👍<div class="sub">Le bureau t\'affecte les commandes depuis le planning.</div></div>') +
+    (f.length ? `<h3 class="sub" style="margin:20px 0 8px">Terminées (${f.length})</h3>${f.map(carte).join('')}` : '');
+}
+
+/* -------------------------------------------------- détail d'une tâche */
+function tache() { return D.taches.find(t => cleDe(t) === cle); }
+async function detail(c) { cle = c; vue = 'detail'; brouillon = ''; if (!tache()) await charger(); rendre(); window.scrollTo(0, 0); }
+function rendre() {
+  const t = tache(); if (!t) return liste();
+  haut(t.client, '← Retour', liste);
+  const prevu = t.heures_prevues * 60, ch = D.chrono && D.chrono.groupe === t.groupe && D.chrono.etape === t.etape;
+  $('app').innerHTML = `
+  <div class="panneau"><div class="titre">${esc(t.designation)}</div><div class="sub">VK ${esc(t.vk)}${t.cde ? ' · cde ' + esc(t.cde) : ''}</div>
+    <div style="margin-top:8px"><span class="pastille">${esc(t.etape === 'toute' ? 'Fabrication' : t.etape_lib)}</span> ${hh(t.heures_prevues)} h prévues${t.heures_commande !== t.heures_prevues ? ' (sur ' + hh(t.heures_commande) + ' h pour la commande)' : ''}</div>
+    <div class="sub">Prévu du ${fmt(t.debut)} au ${fmt(t.fin)}${t.delai ? ' · délai client ' + fmt(t.delai) : ''}</div>
+    ${t.note_excel ? `<div style="margin-top:8px">📝 ${esc(t.note_excel)}</div>` : ''}</div>
+  <div class="panneau"><h3>Ce qu'il y a à faire</h3><table><tr><th>Référence</th><th>Désignation</th><th>Qté</th></tr>${t.lignes.map(l => `<tr><td>${esc(l.nomenc)}</td><td>${esc(l.designation)}</td><td><b>${esc(l.qte)}</b></td></tr>`).join('')}</table></div>
+  <div class="panneau"><h3>Temps passé</h3>
+    <div class="chrono" id="chronoTxt">${hm(t.minutes)}</div><div class="barre"><i class="${t.minutes > prevu ? 'depasse' : ''}" style="width:${Math.min(100, prevu ? t.minutes / prevu * 100 : 0)}%"></i></div>
+    <div class="sub" style="text-align:center;margin-bottom:12px">sur ${hh(t.heures_prevues)} h prévues</div>
+    ${t.termine ? '' : `<button class="gros ${ch ? 'rouge' : 'vert'}" onclick="chrono('${ch ? 'stop' : 'start'}')">${ch ? '⏹ Arrêter le chrono' : '▶ Démarrer le chrono'}</button>`}
+    <p class="sub" style="margin:14px 0 6px">Ou ajoute du temps à la main :</p>
+    <div class="rang"><button onclick="ajouter(15)">+ 15 min</button><button onclick="ajouter(30)">+ 30 min</button><button onclick="ajouter(60)">+ 1 h</button></div>
+    <div style="display:flex;gap:8px;align-items:center;margin-top:10px"><input id="hh" type="number" inputmode="numeric" min="0" placeholder="0" style="width:90px"> h <input id="mm" type="number" inputmode="numeric" min="0" max="59" placeholder="0" style="width:90px"> min <button class="gros" style="flex:1;padding:12px;font-size:20px" onclick="ajouterSaisie()">Ajouter</button></div>
+    ${t.entrees.length ? `<div style="margin-top:12px">${t.entrees.slice().reverse().map(e => `<div class="entree"><span>${esc((e.cree || '').slice(8, 10) + '/' + (e.cree || '').slice(5, 7))} ${esc((e.cree || '').slice(11, 16))} · <b>${hm(e.minutes)}</b> <span class="sub">${e.source === 'chrono' ? '⏱' : '✋'}</span></span><button class="x" onclick="supprimer(${e.id})">✕</button></div>`).join('')}</div>` : ''}
+  </div>
+  <div class="panneau"><button class="gros ${t.termine ? 'gris' : 'vert'}" onclick="terminer(${!t.termine})">${t.termine ? '↩ Rouvrir cette étape' : '✅ J\'ai terminé cette étape'}</button></div>
+  <div class="panneau"><h3>Un souci ? Une modification ?</h3>
+    <div class="rang"><button class="${typeRetour === 'probleme' ? 'on' : ''}" onclick="typeR('probleme')">⚠️ Problème</button><button class="${typeRetour === 'modification' ? 'on' : ''}" onclick="typeR('modification')">✏️ Modification</button><button class="${typeRetour === 'info' ? 'on' : ''}" onclick="typeR('info')">ℹ️ Info</button></div>
+    <textarea id="txt" placeholder="Écris ici ce que tu as constaté…" oninput="brouillon=this.value">${esc(brouillon)}</textarea>
+    <button class="gros" onclick="envoyer()">📨 Envoyer au bureau</button>
+    ${t.retours.map(r => `<div class="retourC"><b>${({probleme: '⚠️ Problème', modification: '✏️ Modification', info: 'ℹ️ Info'})[r.type]}</b> · ${esc(r.cree.slice(8, 10) + '/' + r.cree.slice(5, 7))} ${r.traite ? '<span style="color:var(--ok)">✔ vu par le bureau</span>' : '<span class="sub">envoyé</span>'}<div>${esc(r.texte)}</div></div>`).join('')}</div>`;
+  tictac();
+}
+setInterval(tictac, 1000);
+function tictac() {
+  if (vue !== 'detail' || !$('chronoTxt')) return; const t = tache(); if (!t) return;
+  const ch = D.chrono && D.chrono.groupe === t.groupe && D.chrono.etape === t.etape;
+  const sec = t.minutes * 60 + (ch ? Math.max(0, Date.now() / 1000 + decalage - D.chrono.debut_epoch) : 0);
+  const h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60), s = Math.floor(sec % 60);
+  $('chronoTxt').textContent = ch ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}` : hm(t.minutes);
+}
+async function action(chemin, corps) { try { await api(chemin, corps); await charger(); rendre(); } catch (e) { alert(e.message); } }
+const base = () => { const t = tache(); return {groupe: t.groupe, etape: t.etape}; };
+const chrono = a => action('/api/tablette/chrono', {...base(), action: a});
+const ajouter = m => action('/api/tablette/temps', {...base(), minutes: m});
+function ajouterSaisie() { const m = (parseInt($('hh').value) || 0) * 60 + (parseInt($('mm').value) || 0); if (m > 0) ajouter(m); else alert('Indique une durée.'); }
+const supprimer = id => { if (confirm('Supprimer ce temps ?')) action('/api/tablette/temps_supprimer', {id}); };
+const terminer = ok => action('/api/tablette/termine', {...base(), termine: ok}).then(() => { if (ok) liste(); });
+function typeR(t) { typeRetour = t; brouillon = $('txt').value; rendre(); }
+async function envoyer() { brouillon = $('txt').value; if (!brouillon.trim()) return alert('Écris un commentaire.'); await action('/api/tablette/retour', {...base(), type: typeRetour, texte: brouillon}); brouillon = ''; rendre(); alert('Envoyé au bureau ✔'); }
+
+/* -------------------------------------------------- démarrage */
+(async () => { if (token && nom) { try { await liste(); } catch (e) { accueil(); } } else accueil(); })();
+setInterval(() => { if (vue === 'liste' && token) liste(); }, 60000);
+</script>
+</body>
+</html>
