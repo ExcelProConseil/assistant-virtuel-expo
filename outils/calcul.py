@@ -23,7 +23,11 @@ def commandes(con, aujourdhui=None):
     for g, lignes in groupes.items():
         for l in lignes:
             st = stock.get(l["vk"])
-            if st == "EXPEDIEE" or l["livree"]:
+            if l.get("force_etat") == "livree":                  # choix manuel (bouton « Marquer comme livrée »)
+                l["statut"] = "livree"
+            elif l.get("force_etat") == "encours":               # choix manuel (bouton « Remettre en cours »)
+                l["statut"] = "manque" if st in ("STOCK PARTIEL",) else ("ok" if st in ("STOCK OK", "EXPEDIEE") else "inconnu")
+            elif st == "EXPEDIEE" or l["livree"]:
                 l["statut"] = "livree"
             else:
                 l["statut"] = LIBELLE.get(st, "inconnu")

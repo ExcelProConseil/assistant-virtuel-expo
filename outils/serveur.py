@@ -65,7 +65,7 @@ class H(BaseHTTPRequestHandler):
                 con.commit(); return self._send(200, {"ok": True})
             if self.path == "/api/livree":
                 d = json.loads(corps)
-                con.execute("UPDATE lignes SET livree=? WHERE groupe=?", (1 if d["livree"] else 0, d["groupe"]))
+                con.execute("UPDATE lignes SET force_etat=? WHERE groupe=?", ("livree" if d["livree"] else "encours", d["groupe"]))
                 con.commit(); return self._send(200, {"ok": True})
         except Exception as e:
             return self._send(400, {"erreur": str(e)})

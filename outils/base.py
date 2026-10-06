@@ -6,6 +6,7 @@ CHAMPS = ["vk", "mois", "ordre", "groupe", "client", "cde", "type", "nomenc", "d
           "date_recep", "date_ar", "delai", "rec_prod", "etape", "depart", "h_unit", "h_reelles",
           "h_tot", "ca_unit", "ca_total", "couleur", "principale", "livree"]
 COLONNES = {c: "TEXT" for c in CHAMPS}
+COLONNES["force_etat"] = "TEXT"       # choix manuel : 'livree' ou 'encours' (prioritaire sur Excel et JPV Stock)
 COLONNES.update(qte="REAL", ordre="INTEGER", h_unit="REAL", h_reelles="REAL", h_tot="REAL",
                 ca_unit="REAL", ca_total="REAL", principale="INTEGER", livree="INTEGER DEFAULT 0")
 
