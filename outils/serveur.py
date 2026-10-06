@@ -9,7 +9,7 @@
 """
 import json, pathlib, socket
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from base import connecter, upsert_lignes
+from base import connecter, upsert_lignes, sauvegarde_auto, DB
 from calcul import commandes, gantt, rappels
 import tablette
 import datetime as dt, urllib.parse
@@ -55,7 +55,7 @@ class H(BaseHTTPRequestHandler):
             except PermissionError as e:
                 return self._send(401, {"erreur": str(e)})
         if chemin == "/api/infos":
-            return self._send(200, {"ip": ip_locale(), "port": 8000, "url_tablette": f"http://{ip_locale()}:8000/tablette"})
+            return self._send(200, {"ip": ip_locale(), "port": 8000, "url_tablette": f"http://{ip_locale()}:8000/tablette", "donnees": str(DB)})
         if chemin == "/api/suivi":
             return self._send(200, tablette.suivi(connecter()))
         if chemin == "/api/export_temps.csv":
@@ -100,6 +100,7 @@ class H(BaseHTTPRequestHandler):
             self.rfile.read(int(self.headers.get("Content-Length", 0))); return self._send(403, {"erreur": "accès réservé au PC"})
         corps = self.rfile.read(int(self.headers.get("Content-Length", 0))).decode("utf-8-sig")
         con = connecter()
+        sauvegarde_auto()
         try:
             if chemin == "/api/tablette/connexion":
                 d = json.loads(corps)
@@ -178,6 +179,8 @@ class H(BaseHTTPRequestHandler):
         self._send(404, {"erreur": "introuvable"})
 
 if __name__ == "__main__":
+    connecter().close(); sauvegarde_auto(tous_les=60)
+    print(f"Données : {DB}")
     print("JPV Commandes sur http://localhost:8000")
     print(f"Tablettes : http://{ip_locale()}:8000/tablette")
     ThreadingHTTPServer(("0.0.0.0", 8000), H).serve_forever()

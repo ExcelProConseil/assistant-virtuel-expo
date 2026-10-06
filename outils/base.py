@@ -1,7 +1,34 @@
-"""Base SQLite (fichier data/jpv.db) : commandes, statuts JPV Stock, salariés et absences."""
-import sqlite3, pathlib
+"""Base SQLite : commandes, statuts, affectations, salariés, temps des tablettes.
 
-DB = pathlib.Path(__file__).resolve().parent.parent / "data" / "jpv.db"
+Les données sont rangées HORS du dossier du logiciel (C:\\Users\\<nom>\\JPV_Commandes_Donnees\\jpv.db) :
+une mise à jour du logiciel ne les touche jamais. Des sauvegardes automatiques sont faites à côté."""
+import os, shutil, sqlite3, pathlib, time
+
+PROJET = pathlib.Path(__file__).resolve().parent.parent
+DOSSIER = pathlib.Path(os.environ.get("JPV_DONNEES") or (pathlib.Path.home() / "JPV_Commandes_Donnees"))
+DB = DOSSIER / "jpv.db"
+SAUVEGARDES = DOSSIER / "sauvegardes"
+
+def _ancienne_base():
+    """Retrouve la base d'une ancienne version (dossier data\\ du logiciel) : la plus récente."""
+    candidats = [PROJET / "data" / "jpv.db"]
+    for racine in (pathlib.Path.home() / "Desktop", pathlib.Path.home() / "JPV_Commandes", pathlib.Path.home() / "OneDrive" / "Bureau"):
+        if racine.exists():
+            candidats += list(racine.glob("*/data/jpv.db")) + list(racine.glob("*/*/data/jpv.db")) + list(racine.glob("data/jpv.db"))
+    candidats = [c for c in candidats if c.is_file() and c.stat().st_size > 0]
+    return max(candidats, key=lambda c: c.stat().st_mtime) if candidats else None
+
+def sauvegarde_auto(con=None, tous_les=1800, garder=150):
+    """Copie datée de la base (au plus une toutes les `tous_les` secondes), garde les `garder` dernières."""
+    try:
+        SAUVEGARDES.mkdir(parents=True, exist_ok=True)
+        anciennes = sorted(SAUVEGARDES.glob("jpv_*.db"))
+        if anciennes and time.time() - anciennes[-1].stat().st_mtime < tous_les: return
+        dest = SAUVEGARDES / time.strftime("jpv_%Y-%m-%d_%H%M%S.db")
+        src = sqlite3.connect(DB); out = sqlite3.connect(dest); src.backup(out); out.close(); src.close()
+        for vieille in sorted(SAUVEGARDES.glob("jpv_*.db"))[:-garder]: vieille.unlink()
+    except Exception as e:
+        print("Sauvegarde impossible :", e)
 # réglages appliqués une seule fois aux salariés connus (modifiables ensuite dans l'onglet Salariés)
 DEFAUTS_SALARIES = {"BENJAMIN BRAULT": dict(parti=1), "LEO MILLET": dict(parti=1),
                     "MAEL LONGUET": dict(h_semaine=35, apprenti=1)}
@@ -13,7 +40,10 @@ COLONNES.update(et_u="INTEGER", et_a="INTEGER", et_c="INTEGER", qte="REAL", ordr
                 ca_unit="REAL", ca_total="REAL", principale="INTEGER", livree="INTEGER DEFAULT 0")
 
 def connecter():
-    DB.parent.mkdir(exist_ok=True)
+    DOSSIER.mkdir(parents=True, exist_ok=True)
+    if not DB.exists():                          # premier démarrage de cette version : on récupère l'ancienne base
+        ancienne = _ancienne_base()
+        if ancienne: shutil.copy(ancienne, DB); print("Données reprises depuis", ancienne)
     con = sqlite3.connect(DB)
     con.row_factory = sqlite3.Row
     con.executescript("""

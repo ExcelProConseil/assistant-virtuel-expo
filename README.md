@@ -19,3 +19,7 @@ Chaque salarié ouvre `http://IP-DU-PC:8000/tablette` sur sa tablette (même ré
 
 Autoriser le port 8000 pour le réseau privé (une seule fois, PowerShell administrateur) :
 `New-NetFirewallRule -DisplayName "JPV Commandes (reseau local)" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 8000 -Profile Private -RemoteAddress LocalSubnet`
+
+## Données et sauvegardes
+
+La base est rangée hors du logiciel : `C:\Users\<nom>\JPV_Commandes_Donnees\jpv.db` (variable `JPV_DONNEES` pour changer). Une mise à jour du logiciel ne la touche jamais. Sauvegardes automatiques dans `JPV_Commandes_Donnees\sauvegardes\` (une toutes les 30 min d'activité, 150 conservées). Pour restaurer : fermer le logiciel, copier une sauvegarde par-dessus `jpv.db` en la renommant.

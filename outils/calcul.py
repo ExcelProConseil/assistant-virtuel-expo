@@ -6,6 +6,7 @@ Une commande est COMPLÈTE quand toutes ses lignes sont « ok »."""
 import datetime as dt
 
 LIBELLE = {"STOCK OK": "ok", "STOCK PARTIEL": "manque", "EXPEDIEE": "livree"}
+HEURES_MAX = 2000.0                  # au-delà, on considère que c'est une faute de frappe dans l'Excel (ex. 630000 h)
 H_LUN_JEU, H_VEN = 8.5, 5.0          # heures travaillées par jour (comme l'onglet CP : 8,5 h du lundi au jeudi, 5 h le vendredi)
 
 def _date(s):
@@ -38,6 +39,7 @@ def commandes(con, aujourdhui=None):
         for l in lignes:                                   # indication JPV Stock, ligne par ligne
             st = stock.get(l["vk"])
             l["statut"] = LIBELLE.get(st, "inconnu")
+        anormales = [l for l in lignes if (l["h_tot"] or 0) > HEURES_MAX]      # heures impossibles : ignorées dans les totaux
         delais = [d for d in (_date(l["delai"]) for l in lignes) if d]
         p = lignes[0]
         manque = sum(l["statut"] in ("manque", "inconnu") for l in lignes)
@@ -50,7 +52,8 @@ def commandes(con, aujourdhui=None):
                          vk=p["vk"], vks=[l["vk"] for l in lignes], designation=p["designation"],
                          delai=d.isoformat() if d else None,
                          ca=sum(l["ca_total"] or 0 for l in lignes),
-                         heures=sum(l["h_tot"] or 0 for l in lignes),
+                         heures=sum((l["h_tot"] or 0) for l in lignes if (l["h_tot"] or 0) <= HEURES_MAX),
+                         heures_anormales=[dict(vk=l["vk"], valeur=l["h_tot"]) for l in anormales],
                          statut=statut, livree=statut == "livree", manuel=g in choix, etapes=excel,
                          stock=indic, nb_manque=manque, lignes=lignes,
                          jours=(d - auj).days if d else None))
@@ -195,6 +198,10 @@ def rappels(cmds, g, aujourdhui=None, seuil_jours=3, retours=()):
     out = []
     pretes = {p["groupe"]: p for p in g["pretes"]}
     for c in cmds:
+        if c["heures_anormales"] and c["statut"] != "livree":
+            a = c["heures_anormales"][0]
+            out.append(dict(niveau="rouge", cle=f'heuresnok:{c["groupe"]}', groupe=c["groupe"], client=c["client"], vk=c["vk"],
+                            texte=f'{c["client"] or ""} {a["vk"]} : heures impossibles dans l\'Excel ({format(a["valeur"], ",.0f").replace(",", " ")} h) — ignorées, corrige la colonne H. DEVIS'))
         if c["statut"] not in A_PLANIFIER: continue
         d = _date(c["delai"]); p = pretes.get(c["groupe"])
         nom = f'{c["client"] or ""} {c["vk"] or ""}'.strip()

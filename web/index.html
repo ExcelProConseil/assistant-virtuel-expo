@@ -132,6 +132,7 @@ async function charger() {
   const r = await (await fetch('/api/commandes')).json();
   CMD = r.commandes; MOIS = r.mois; stockOk = r.stock_charge; erreurPlan = r.erreur; planningLu = r.planning_lu;
   try { RAPP = (await (await fetch('/api/rappels')).json()).rappels; notifier(); } catch (e) { RAPP = []; }
+  if (!INFOS) { try { INFOS = await (await fetch('/api/infos')).json(); } catch (e) {} }
   if (!mois) mois = (CMD.find(c => !c.livree) || {mois: MOIS[0]}).mois;
   if (onglet === 'gantt') await chargerGantt();
   afficher();
@@ -143,7 +144,7 @@ async function chargerGantt() {
 function afficher() {
   $('nav').innerHTML = [['prio', 'Prioritaires'], ['plan', 'Planning'], ['gantt', 'Gantt salariés'], ['suivi', '📱 Suivi atelier'], ['sal', '👥 Salariés'], ['rapp', '🔔 Rappels']].map(([k, l]) =>
     `<button class="${onglet === k ? 'on' : ''}" onclick="choisir('${k}')">${l}${k === 'rapp' && RAPP.length ? '<span class="badgeN">' + RAPP.filter(x => x.niveau === 'rouge').length + '</span>' : ''}</button>`).join('');
-  $('lu').innerHTML = (planningLu ? 'Planning Excel relu le ' + fmt(planningLu.slice(0, 10)) + ' à ' + planningLu.slice(11, 16) + ' · ' : '') + '<button onclick="relire()">↻ Relire l\'Excel maintenant</button>';
+  $('lu').innerHTML = (planningLu ? 'Planning Excel relu le ' + fmt(planningLu.slice(0, 10)) + ' à ' + planningLu.slice(11, 16) + ' · ' : '') + (INFOS ? '💾 données sauvegardées automatiquement (' + INFOS.donnees + ') · ' : '') + '<button onclick="relire()">↻ Relire l\'Excel maintenant</button>';
   $('note').innerHTML = (erreurPlan ? `<div class="note">⚠️ ${erreurPlan}</div>` : '') + (CMD.length === 0 && !erreurPlan ? '<div class="note">Aucune commande : le planning Excel n\'a pas encore été lu.</div>' : '') + (stockOk ? '' :
     '<div class="note">⚠️ JPV Stock est introuvable : aucune commande ne peut être déclarée complète. Vérifie que le dossier C:\\Users\\cmore\\JPV_STOCK existe.</div>');
   ({prio: vuePrio, plan: vuePlan, gantt: vueGantt, rapp: vueRapp, sal: vueSal, suivi: vueSuivi})[onglet]();
