@@ -23,3 +23,5 @@ Autoriser le port 8000 pour le réseau privé (une seule fois, PowerShell admini
 ## Données et sauvegardes
 
 La base est rangée hors du logiciel : `C:\Users\<nom>\JPV_Commandes_Donnees\jpv.db` (variable `JPV_DONNEES` pour changer). Une mise à jour du logiciel ne la touche jamais. Sauvegardes automatiques dans `JPV_Commandes_Donnees\sauvegardes\` (une toutes les 30 min d'activité, 150 conservées). Pour restaurer : fermer le logiciel, copier une sauvegarde par-dessus `jpv.db` en la renommant.
+
+**Mise à jour :** télécharger le ZIP, puis double-cliquer sur `METTRE_A_JOUR.bat` (il s'arrête sans rien modifier si le ZIP est introuvable).
