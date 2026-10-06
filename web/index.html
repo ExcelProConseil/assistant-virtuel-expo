@@ -30,7 +30,7 @@ button{cursor:pointer}button.on{background:var(--acc);color:#fff;border-color:va
 select.st{font-weight:600;border:0;color:#fff;padding:5px 8px;border-radius:99px;cursor:pointer}
 select.st.attente{background:#8b93a5}select.st.complet{background:#1f9d55}select.st.fabrication{background:#e08a00}select.st.controle{background:#7a4fd6}select.st.livree{background:#5b6578}
 .ind{font-size:12px;color:var(--mut);white-space:nowrap}.ind.ok{color:var(--ok)}.ind.partiel{color:var(--warn)}
-.head{display:grid;grid-template-columns:34px 1fr 150px 90px 150px 150px;gap:10px;padding:9px 14px;align-items:center;cursor:pointer}
+.head{display:grid;grid-template-columns:62px 1fr 150px 90px 150px 150px;gap:10px;padding:9px 14px;align-items:center;cursor:pointer}
 .rang{font-weight:700;color:var(--mut)}.client{font-weight:600}
 .badge{padding:3px 10px;border-radius:99px;font-size:12px;font-weight:600;color:#fff;background:var(--mut);text-align:center}
 
@@ -154,6 +154,16 @@ async function choisir(k) { fermerPanneau(); onglet = k; if (k === 'gantt') awai
 const recherche = c => { const q = $('q').value.toLowerCase(); return !q || JSON.stringify([c.client, c.cde, c.lignes.map(l => [l.vk, l.nomenc, l.designation])]).toLowerCase().includes(q); };
 
 /* ---------------------------------------------------------------- Prioritaires */
+const SEL = new Set(); let LISTE_PRIO = [];
+function bascule(g) { if (SEL.has(g)) SEL.delete(g); else SEL.add(g); afficher(); }
+function selTout() { LISTE_PRIO.forEach(c => SEL.add(c.groupe)); afficher(); }
+function selStock() { LISTE_PRIO.filter(c => c.stock === 'ok').forEach(c => SEL.add(c.groupe)); afficher(); }
+function selRien() { SEL.clear(); afficher(); }
+async function appliquerSel() {
+  const v = $('selStatut').value; if (!SEL.size) return alert('Coche d\'abord des commandes.');
+  if (!confirm(SEL.size + ' commande(s) passeront en « ' + LIB[v] + ' ». Continuer ?')) return;
+  await post('/api/statuts', {groupes: [...SEL], statut: v === 'attente' ? null : v}); SEL.clear(); charger();
+}
 function vuePrio() {
   const nb = k => CMD.filter(c => c.statut === k).length;
   const heures = k => CMD.filter(c => c.statut === k).reduce((s, c) => s + c.heures, 0);
@@ -167,13 +177,17 @@ function vuePrio() {
       `<button class="${filtre === k ? 'on' : ''}" onclick="filtre='${k}';afficher()">${l}</button>`).join('')}
       <button onclick="imprimerListe()">📄 PDF liste de fabrication</button> <span class="sub">Tu choisis le statut de chaque commande avec le menu à droite. JPV Stock donne seulement une indication 💡.</span></div>`;
   const liste = CMD.filter(c => (filtre === 'toutes' ? !c.livree : c.statut === filtre) && recherche(c));
+  LISTE_PRIO = liste;
+  h += `<div class="bar" style="background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 10px"><b>☑ Actions groupées</b>
+    <button onclick="selTout()">Tout sélectionner</button><button onclick="selStock()">Sélectionner « 💡 stock complet »</button><button onclick="selRien()">Aucune</button>
+    <span class="sub">${SEL.size} sélectionnée(s) →</span><select id="selStatut">${STATUTS.map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}</select><button class="on" onclick="appliquerSel()">Appliquer le statut</button></div>`;
   // Livrées : les plus récentes en haut (date de livraison, sinon mois de l'onglet)
   if (filtre === 'livree') liste.sort((a, b) => (b.delai || '').localeCompare(a.delai || '') || MOIS.indexOf(b.mois) - MOIS.indexOf(a.mois) || b.groupe.localeCompare(a.groupe, undefined, {numeric: true}));
   h += liste.map((c, i) => {
     const j = c.livree ? null : c.jours, cls = j == null ? '' : j < 0 ? 'retard' : j <= 7 ? 'proche' : '';
     const delai = c.livree ? 'livrée' : j == null ? 'sans délai' : j < 0 ? `en retard de ${-j} j` : j === 0 ? "aujourd'hui" : `dans ${j} j`;
     return `<div class="cmd ${c.statut}"><div class="head" onclick="this.parentNode.classList.toggle('open')">
-      <div class="rang">${i + 1}</div>
+      <div class="rang"><input type="checkbox" ${SEL.has(c.groupe) ? 'checked' : ''} onclick="event.stopPropagation();bascule('${c.groupe}')" style="width:18px;height:18px;vertical-align:middle"> ${i + 1}</div>
       <div><div class="client">${c.client || '—'} <span class="sub">VK ${c.vk || ''}</span></div><div class="sub">${c.designation || ''} · ${c.lignes.length} ligne(s) · ${c.mois} · ${eur(c.ca)}</div></div>
       <div class="${cls}">${fmt(c.delai) || '—'}<div class="sub ${cls}">${delai}</div></div>
       <div>${c.heures ? hh(c.heures) + ' h' : '<span class="sub">— h</span>'}</div>

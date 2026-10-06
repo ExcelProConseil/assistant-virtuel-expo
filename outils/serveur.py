@@ -164,6 +164,13 @@ class H(BaseHTTPRequestHandler):
                 else:
                     con.execute("INSERT OR REPLACE INTO etapes VALUES (?,?,?)", (d["groupe"], d["etape"], 1 if d["fait"] else 0))
                 con.commit(); return self._send(200, {"ok": True})
+            if self.path == "/api/statuts":          # {groupes:[...], statut: complet|fabrication|controle|livree|null}  (plusieurs d'un coup)
+                d = json.loads(corps)
+                if d.get("statut") and d["statut"] not in ("complet", "fabrication", "controle", "livree"): raise ValueError("statut inconnu")
+                for g in d["groupes"]:
+                    if d.get("statut"): con.execute("INSERT OR REPLACE INTO statuts VALUES (?,?)", (g, d["statut"]))
+                    else: con.execute("DELETE FROM statuts WHERE groupe=?", (g,))
+                con.commit(); return self._send(200, {"ok": len(d["groupes"])})
             if self.path == "/api/statut":           # {groupe, statut: complet|fabrication|controle|livree|null}
                 d = json.loads(corps)
                 if d.get("statut"):
